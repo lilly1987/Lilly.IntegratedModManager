@@ -16,7 +16,9 @@ namespace Lilly.IntegratedModManager
         {
             All,
             Active,
-            Inactive
+            Inactive,
+            Untagged,
+            Uncategorized
         }
 
         private const float RowHeight = 30f;
@@ -41,6 +43,8 @@ namespace Lilly.IntegratedModManager
         private string searchText = "";
         private ModFilter currentModFilter = ModFilter.All;
         private bool tagMode;
+        private Vector2 categoryTabScroll;
+        private Vector2 tagTabScroll;
         private Vector2 modListScroll;
         private Vector2 descriptionScroll;
         private string dragPackageId;
@@ -173,6 +177,10 @@ namespace Lilly.IntegratedModManager
                     return ModFilter.Active;
                 case ModFilter.Active:
                     return ModFilter.Inactive;
+                case ModFilter.Inactive:
+                    return ModFilter.Untagged;
+                case ModFilter.Untagged:
+                    return ModFilter.Uncategorized;
                 default:
                     return ModFilter.All;
             }
@@ -186,6 +194,10 @@ namespace Lilly.IntegratedModManager
                     return "필터: 활성";
                 case ModFilter.Inactive:
                     return "필터: 비활성";
+                case ModFilter.Untagged:
+                    return "필터: 태그 없음";
+                case ModFilter.Uncategorized:
+                    return "필터: 미분류";
                 default:
                     return "필터: 전체";
             }
@@ -199,12 +211,18 @@ namespace Lilly.IntegratedModManager
                 return;
             }
 
-            float tabWidth = Mathf.Max(150f, rect.width / categories.Count);
-            for (int i = 0; i < categories.Count; i++)
+            List<ManagerCategoryData> visibleCategories = categories
+                .Where(MatchesCategorySearch)
+                .ToList();
+            float tabWidth = 260f;
+            float viewWidth = Mathf.Max(rect.width, visibleCategories.Count * tabWidth);
+            Rect viewRect = new Rect(0f, 0f, viewWidth, rect.height);
+            Widgets.BeginScrollView(rect, ref categoryTabScroll, viewRect);
+            for (int i = 0; i < visibleCategories.Count; i++)
             {
-                ManagerCategoryData category = categories[i];
-                Rect tabRect = new Rect(rect.x + i * tabWidth, rect.y,
-                    Mathf.Min(tabWidth - 6f, rect.xMax - (rect.x + i * tabWidth)), rect.height);
+                ManagerCategoryData category = visibleCategories[i];
+                int categoryIndex = categories.IndexOf(category);
+                Rect tabRect = new Rect(i * tabWidth, 0f, tabWidth - 6f, rect.height);
                 if (category.Id == currentCategoryId)
                     Widgets.DrawHighlight(tabRect);
 
@@ -215,7 +233,7 @@ namespace Lilly.IntegratedModManager
                     category.Enabled = enabled;
 
                 Rect labelRect = new Rect(enabledRect.xMax + 4f, tabRect.y,
-                    Mathf.Max(30f, tabRect.width - enabledRect.width - 90f), tabRect.height);
+                    Mathf.Max(30f, tabRect.width - enabledRect.width - 146f), tabRect.height);
                 string label = category.Name + " (" + GetInstalledCount(category) + ")";
                 if (Widgets.ButtonText(labelRect, label))
                 {
@@ -229,14 +247,47 @@ namespace Lilly.IntegratedModManager
                     RefreshVisibleMods();
                 }
 
-                float actionX = tabRect.xMax - 84f;
-                if (Widgets.ButtonText(new Rect(actionX, tabRect.y + 7f, 26f, 22f), "+"))
-                    OpenCreateCategoryDialog(i + 1);
-                if (Widgets.ButtonText(new Rect(actionX + 28f, tabRect.y + 7f, 28f, 22f), "이름"))
+                float actionX = tabRect.xMax - 138f;
+                GUI.enabled = categoryIndex > 0;
+                if (Widgets.ButtonText(new Rect(actionX, tabRect.y + 7f, 24f, 22f), "‹"))
+                    MoveCategory(categoryIndex, -1);
+                GUI.enabled = categoryIndex < categories.Count - 1;
+                if (Widgets.ButtonText(new Rect(actionX + 26f, tabRect.y + 7f, 24f, 22f), "›"))
+                    MoveCategory(categoryIndex, 1);
+                GUI.enabled = true;
+                if (Widgets.ButtonText(new Rect(actionX + 52f, tabRect.y + 7f, 24f, 22f), "+"))
+                    OpenCreateCategoryDialog(categoryIndex + 1);
+                if (Widgets.ButtonText(new Rect(actionX + 78f, tabRect.y + 7f, 36f, 22f), "이름"))
                     OpenRenameCategoryDialog(category);
-                if (Widgets.ButtonText(new Rect(actionX + 58f, tabRect.y + 7f, 24f, 22f), "×"))
+                if (Widgets.ButtonText(new Rect(actionX + 116f, tabRect.y + 7f, 22f, 22f), "×"))
                     ConfirmDeleteCategory(category);
             }
+            Widgets.EndScrollView();
+        }
+
+        private bool MatchesCategorySearch(ManagerCategoryData category)
+        {
+            if (category == null)
+                return false;
+            if (searchText.NullOrEmpty())
+                return true;
+
+            return category.ModIds.Any(packageId =>
+            {
+                ModMetaData mod = FindMod(packageId);
+                return mod != null && MatchesSearch(mod);
+            });
+        }
+
+        private void MoveCategory(int index, int offset)
+        {
+            int targetIndex = index + offset;
+            if (index < 0 || targetIndex < 0 || targetIndex >= categories.Count)
+                return;
+
+            ManagerCategoryData category = categories[index];
+            categories[index] = categories[targetIndex];
+            categories[targetIndex] = category;
         }
 
         private void OpenCreateCategoryDialog(int insertIndex)
@@ -328,55 +379,93 @@ namespace Lilly.IntegratedModManager
 
         private void DrawTagTabs(Rect rect)
         {
+            const float systemWidth = 190f;
             float addWidth = 105f;
-            List<ManagerTagData> orderedTags = new List<ManagerTagData>();
             ManagerTagData untagged = FindTag("untagged");
             if (untagged != null)
-                orderedTags.Add(untagged);
+                DrawTagTab(untagged, new Rect(rect.x, rect.y, systemWidth - 6f, rect.height));
+
+            List<ManagerTagData> userTags = new List<ManagerTagData>();
             for (int i = 0; i < tags.Count; i++)
             {
                 ManagerTagData tag = tags[i];
                 if (tag == null || string.Equals(tag.Id, "untagged", StringComparison.OrdinalIgnoreCase))
                     continue;
-                orderedTags.Add(tag);
+                userTags.Add(tag);
             }
 
-            float tabWidth = orderedTags.Count == 0
-                ? 0f
-                : Mathf.Max(80f, (rect.width - addWidth - 8f) / orderedTags.Count);
-
-            for (int i = 0; i < orderedTags.Count; i++)
+            float addX = rect.xMax - addWidth;
+            float scrollWidth = Mathf.Max(0f, rect.width - systemWidth - addWidth);
+            Rect scrollRect = new Rect(rect.x + systemWidth, rect.y, scrollWidth, rect.height);
+            float tabWidth = 260f;
+            float viewWidth = Mathf.Max(scrollWidth, userTags.Count * tabWidth);
+            Rect viewRect = new Rect(0f, 0f, viewWidth, rect.height);
+            Widgets.BeginScrollView(scrollRect, ref tagTabScroll, viewRect);
+            for (int i = 0; i < userTags.Count; i++)
             {
-                ManagerTagData tag = orderedTags[i];
-                Rect tabRect = new Rect(rect.x + i * tabWidth, rect.y,
-                    Mathf.Min(tabWidth - 5f, rect.width - addWidth - i * tabWidth), rect.height);
-                if (tag.Id == currentTagId)
-                    Widgets.DrawHighlight(tabRect);
+                DrawTagTab(userTags[i],
+                    new Rect(i * tabWidth, 0f, tabWidth - 5f, rect.height));
+            }
+            Widgets.EndScrollView();
 
-                Rect stateRect = new Rect(tabRect.x + 2f, tabRect.y + 7f, 30f, 30f);
-                if (Widgets.ButtonText(stateRect, GetTagStateLabel(tag)))
-                    ToggleTagEnabled(tag);
+            Rect addRect = new Rect(addX, rect.y, addWidth, rect.height);
+            if (Widgets.ButtonText(addRect, "+ 태그 추가"))
+                OpenCreateTagDialog();
+        }
 
+        private void DrawTagTab(ManagerTagData tag, Rect tabRect)
+        {
+            if (tag == null)
+                return;
+            if (tag.Id == currentTagId)
+                Widgets.DrawHighlight(tabRect);
+
+            Rect stateRect = new Rect(tabRect.x + 2f, tabRect.y + 7f, 30f, 30f);
+            if (Widgets.ButtonText(stateRect, GetTagStateLabel(tag)))
+                ToggleTagEnabled(tag);
+
+            if (tag.IsSystem)
+            {
                 Rect labelRect = new Rect(stateRect.xMax + 3f, tabRect.y,
-                    Mathf.Max(20f, tabRect.width - 125f), tabRect.height);
+                    tabRect.width - stateRect.width - 8f, tabRect.height);
                 if (Widgets.ButtonText(labelRect,
                     tag.Name + " (" + GetInstalledCount(tag) + ")"))
                     SelectTag(tag);
-
-                if (tag.IsSystem)
-                    continue;
-
-                Rect renameRect = new Rect(tabRect.xMax - 84f, tabRect.y + 7f, 42f, 30f);
-                if (Widgets.ButtonText(renameRect, "이름"))
-                    OpenRenameTagDialog(tag);
-                Rect deleteRect = new Rect(tabRect.xMax - 38f, tabRect.y + 7f, 34f, 30f);
-                if (Widgets.ButtonText(deleteRect, "×"))
-                    ConfirmDeleteTag(tag);
+                return;
             }
 
-            Rect addRect = new Rect(rect.xMax - addWidth, rect.y, addWidth, rect.height);
-            if (Widgets.ButtonText(addRect, "+ 태그 추가"))
-                OpenCreateTagDialog();
+            Rect labelRectUser = new Rect(stateRect.xMax + 3f, tabRect.y,
+                Mathf.Max(20f, tabRect.width - 188f), tabRect.height);
+            if (Widgets.ButtonText(labelRectUser,
+                tag.Name + " (" + GetInstalledCount(tag) + ")"))
+                SelectTag(tag);
+
+            Rect deleteRect = new Rect(tabRect.xMax - 38f, tabRect.y + 7f, 34f, 30f);
+            GUI.enabled = tags.IndexOf(tag) > 1;
+            if (Widgets.ButtonText(new Rect(tabRect.xMax - 150f, tabRect.y + 7f, 24f, 30f), "‹"))
+                MoveTag(tag, -1);
+            GUI.enabled = tags.IndexOf(tag) >= 0 && tags.IndexOf(tag) < tags.Count - 1;
+            if (Widgets.ButtonText(new Rect(tabRect.xMax - 124f, tabRect.y + 7f, 24f, 30f), "›"))
+                MoveTag(tag, 1);
+            GUI.enabled = true;
+            Rect renameRect = new Rect(tabRect.xMax - 96f, tabRect.y + 7f, 42f, 30f);
+            if (Widgets.ButtonText(renameRect, "이름"))
+                OpenRenameTagDialog(tag);
+            if (Widgets.ButtonText(deleteRect, "×"))
+                ConfirmDeleteTag(tag);
+        }
+
+        private void MoveTag(ManagerTagData tag, int offset)
+        {
+            int index = tags.IndexOf(tag);
+            int targetIndex = index + offset;
+            if (index <= 0 || targetIndex <= 0 || targetIndex >= tags.Count)
+                return;
+
+            ManagerTagData target = tags[targetIndex];
+            tags[targetIndex] = tag;
+            tags[index] = target;
+            PersistTagData();
         }
 
         private void SelectTag(ManagerTagData tag)
@@ -494,6 +583,7 @@ namespace Lilly.IntegratedModManager
                     folder.Collapsed ? "▶" : "▼"))
                 {
                     folder.Collapsed = !folder.Collapsed;
+                    PersistTagData();
                     RefreshVisibleMods();
                 }
 
@@ -622,6 +712,14 @@ namespace Lilly.IntegratedModManager
             Text.Font = GameFont.Small;
             y += 38f;
 
+            string vanillaName = mod.Name.NullOrEmpty() ? mod.FolderName : mod.Name;
+            if (!string.Equals(GetDisplayName(mod), vanillaName, StringComparison.Ordinal))
+            {
+                Widgets.Label(new Rect(inner.x, y, inner.width, 24f),
+                    "기본 이름: " + vanillaName);
+                y += 26f;
+            }
+
             string versionText = GetModVersionText(mod);
             if (!versionText.NullOrEmpty())
             {
@@ -726,10 +824,16 @@ namespace Lilly.IntegratedModManager
 
             float rightX = rect.xMax - buttonWidth * 3f - 8f;
             if (Widgets.ButtonText(new Rect(rightX, rect.y, buttonWidth, rect.height), "취소"))
-                Close();
+                CancelChanges();
             if (Widgets.ButtonText(new Rect(rightX + buttonWidth + 8f, rect.y,
                 buttonWidth, rect.height), "적용"))
                 ApplyChanges();
+        }
+
+        private void CancelChanges()
+        {
+            PersistTagData();
+            Close();
         }
 
         private void HandleSelectAll()
@@ -836,6 +940,37 @@ namespace Lilly.IntegratedModManager
             }
             if (options.Count > 0)
                 Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void ClearTagsForSelection(IEnumerable<string> packageIds)
+        {
+                if (packageIds == null)
+                    return;
+
+                HashSet<string> selectedIds =
+                    new HashSet<string>(packageIds, StringComparer.OrdinalIgnoreCase);
+                foreach (ManagerModData modData in modStates)
+                {
+                    if (modData == null || !selectedIds.Contains(modData.PackageId))
+                        continue;
+                    if (modData.TagIds != null)
+                        modData.TagIds.Clear();
+                }
+
+                foreach (ManagerTagData tag in tags)
+                {
+                    if (tag == null || tag.Folders == null)
+                        continue;
+                    foreach (ManagerFolderData folder in tag.Folders)
+                    {
+                        if (folder != null && folder.ModIds != null)
+                            folder.ModIds.RemoveAll(selectedIds.Contains);
+                    }
+                }
+
+                PersistTagData();
+                if (tagMode)
+                    RefreshVisibleMods();
         }
 
         private void OpenTagFolderMoveMenu()
@@ -1005,6 +1140,7 @@ namespace Lilly.IntegratedModManager
 
             if (tagMode && tag.Id == currentTagId)
                 RefreshVisibleMods();
+            PersistTagData();
         }
 
         private void OpenCreateTagDialog(IEnumerable<string> packageIds = null)
@@ -1017,12 +1153,16 @@ namespace Lilly.IntegratedModManager
                 "",
                 name =>
                 {
-                    if (tags.Any(tag => string.Equals(tag.Name, name.Trim(),
-                        StringComparison.OrdinalIgnoreCase)))
+                    ManagerTagData existingTag = tags.FirstOrDefault(tag =>
+                        string.Equals(tag.Name, name.Trim(),
+                            StringComparison.OrdinalIgnoreCase));
+                    if (existingTag != null)
                     {
-                        Messages.Message("같은 이름의 태그가 이미 있습니다.",
-                            MessageTypeDefOf.RejectInput);
-                        return false;
+                        if (selectedIds.Count > 0)
+                            SetTagForSelection(selectedIds, existingTag, true);
+                        tagMode = true;
+                        SelectTag(existingTag);
+                        return true;
                     }
 
                     ManagerTagData tag = new ManagerTagData(
@@ -1031,6 +1171,7 @@ namespace Lilly.IntegratedModManager
                     if (selectedIds.Count > 0)
                         SetTagForSelection(selectedIds, tag, true);
 
+                    PersistTagData();
                     tagMode = true;
                     SelectTag(tag);
                     return true;
@@ -1057,6 +1198,7 @@ namespace Lilly.IntegratedModManager
                     }
 
                     tag.Name = name.Trim();
+                    PersistTagData();
                     return true;
                 }));
         }
@@ -1090,6 +1232,7 @@ namespace Lilly.IntegratedModManager
                         primarySelectedPackageId = null;
                         RefreshVisibleMods();
                     }
+                    PersistTagData();
                 },
                 destructive: true));
         }
@@ -1186,8 +1329,18 @@ namespace Lilly.IntegratedModManager
                     () => SetSelectedEnabled(false)));
                 options.Add(new FloatMenuOption("선택 해제",
                     () => ClearSelection()));
-                options.Add(new FloatMenuOption("카테고리 이동...",
-                    () => OpenMoveMenu()));
+                options.Add(new FloatMenuOption("폴더 이동/추가...",
+                    () =>
+                    {
+                        if (tagMode)
+                            OpenTagFolderMoveMenu();
+                        else
+                            OpenMoveMenu();
+                    }));
+                options.Add(new FloatMenuOption("선택 태그 편집...",
+                    () => OpenSelectedTagMenu(targets)));
+                options.Add(new FloatMenuOption("선택 모드 태그 모두 제거",
+                    () => ClearTagsForSelection(targets)));
             }
 
             options.Add(new FloatMenuOption("표시 이름 변경",
@@ -1345,6 +1498,7 @@ namespace Lilly.IntegratedModManager
             selectedPackageIds.Clear();
             primarySelectedPackageId = null;
             RefreshVisibleMods();
+            PersistTagData();
         }
 
         private void OpenCreateFolderDialog(
@@ -1394,6 +1548,7 @@ namespace Lilly.IntegratedModManager
                     int index = tag.Folders.IndexOf(insertAfter);
                     tag.Folders.Insert(index < 0 ? tag.Folders.Count : index + 1, folder);
                     currentFolderId = folder.Id;
+                    PersistTagData();
                     return true;
                 }));
         }
@@ -1434,6 +1589,7 @@ namespace Lilly.IntegratedModManager
                     }
 
                     folder.Name = name.Trim();
+                    PersistTagData();
                     return true;
                 }));
         }
@@ -1492,6 +1648,7 @@ namespace Lilly.IntegratedModManager
                     tag.Folders.Remove(folder);
                     currentFolderId = unfiled.Id;
                     RefreshVisibleMods();
+                    PersistTagData();
                 },
                 destructive: true));
         }
@@ -1539,7 +1696,10 @@ namespace Lilly.IntegratedModManager
                     return;
                 ManagerFolderData folder = FindFolder(tag, currentFolderId);
                 if (folder != null)
+                {
                     SortFolderModIds(folder);
+                    PersistTagData();
+                }
                 return;
             }
 
@@ -1700,6 +1860,7 @@ namespace Lilly.IntegratedModManager
             lastSelectedIndex = -1;
             modListScroll = Vector2.zero;
             RefreshVisibleMods();
+            PersistTagData();
             Messages.Message(
                 "프리셋을 편집 화면에 불러왔습니다. 적용을 눌러 설정을 저장하세요: " + preset.Name,
                 MessageTypeDefOf.PositiveEvent);
@@ -1767,6 +1928,35 @@ namespace Lilly.IntegratedModManager
         private void SavePresetsToSettings()
         {
             settings.Presets = presets.Select(preset => preset.Copy()).ToList();
+            IntegratedModManagerMod.Instance.WriteSettings();
+        }
+
+        private void PersistTagData()
+        {
+            settings.Tags = tags.Select(tag => tag.Copy()).ToList();
+
+            if (settings.Mods == null)
+                settings.Mods = new List<ManagerModData>();
+
+            for (int i = 0; i < modStates.Count; i++)
+            {
+                ManagerModData workingState = modStates[i];
+                if (workingState == null || workingState.PackageId.NullOrEmpty())
+                    continue;
+
+                ManagerModData savedState = settings.FindModData(workingState.PackageId);
+                if (savedState == null)
+                {
+                    savedState = new ManagerModData(
+                        workingState.PackageId, workingState.Enabled);
+                    settings.Mods.Add(savedState);
+                }
+
+                savedState.TagIds = workingState.TagIds == null
+                    ? new List<string>()
+                    : new List<string>(workingState.TagIds);
+            }
+
             IntegratedModManagerMod.Instance.WriteSettings();
         }
 
@@ -2131,9 +2321,30 @@ namespace Lilly.IntegratedModManager
                     return active;
                 case ModFilter.Inactive:
                     return !active;
+                case ModFilter.Untagged:
+                    return state == null || state.TagIds == null || state.TagIds.Count == 0;
+                case ModFilter.Uncategorized:
+                    return IsInUncategorizedFolder(mod.PackageId);
                 default:
                     return true;
             }
+        }
+
+        private bool IsInUncategorizedFolder(string packageId)
+        {
+            for (int categoryIndex = 0; categoryIndex < categories.Count; categoryIndex++)
+            {
+                ManagerCategoryData category = categories[categoryIndex];
+                if (category == null || category.Folders == null)
+                    continue;
+
+                ManagerFolderData unfiled = FindFolder(category, "uncategorized");
+                if (unfiled != null && unfiled.ModIds.Any(id =>
+                    string.Equals(id, packageId, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+
+            return false;
         }
 
         private void HandleDragDropToMod(string targetPackageId)

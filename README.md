@@ -15,6 +15,7 @@ RimWorld 1.7 mod replacing the vanilla Mods menu page with a category- and tag-b
 - Protected Core and official DLC activation.
 - Apply changes to the vanilla mod configuration; cancel unapplied changes.
 - Persistent category/tag/folder assignments, collapsed state, and activation choices.
+- Tag definitions, tag folders, and tag assignments are saved immediately and remain when unapplied manager changes are canceled.
 
 Newly discovered mods are added to the Normal category. Core and official DLC are protected from moving or disabling. Changes apply on the next game restart.
 

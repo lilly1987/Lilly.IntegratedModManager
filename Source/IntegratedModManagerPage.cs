@@ -1313,25 +1313,35 @@ namespace Lilly.IntegratedModManager
                             visibleMods.Add(mod);
                     }
                 }
-                return;
             }
-
-            ManagerCategoryData category = FindCurrentCategory();
-            if (category == null)
-                return;
-
-            for (int folderIndex = 0; folderIndex < category.Folders.Count; folderIndex++)
+            else
             {
-                ManagerFolderData folder = category.Folders[folderIndex];
-                if (folder.Collapsed)
-                    continue;
-                for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                ManagerCategoryData category = FindCurrentCategory();
+                if (category == null)
+                    return;
+
+                for (int folderIndex = 0; folderIndex < category.Folders.Count; folderIndex++)
                 {
-                    ModMetaData mod = FindMod(folder.ModIds[modIndex]);
-                    if (mod != null && MatchesSearch(mod))
-                        visibleMods.Add(mod);
+                    ManagerFolderData folder = category.Folders[folderIndex];
+                    if (folder.Collapsed)
+                        continue;
+                    for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                    {
+                        ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                        if (mod != null && MatchesSearch(mod))
+                            visibleMods.Add(mod);
+                    }
                 }
             }
+
+            selectedPackageIds.RemoveWhere(packageId =>
+                !visibleMods.Any(mod =>
+                    string.Equals(mod.PackageId, packageId, StringComparison.OrdinalIgnoreCase)));
+            if (!selectedPackageIds.Contains(primarySelectedPackageId))
+                primarySelectedPackageId = selectedPackageIds.FirstOrDefault();
+            if (primarySelectedPackageId != null && !visibleMods.Any(mod =>
+                    string.Equals(mod.PackageId, primarySelectedPackageId, StringComparison.OrdinalIgnoreCase)))
+                primarySelectedPackageId = null;
         }
 
         private void EnsureCurrentSelectionValid()

@@ -11,6 +11,7 @@ RimWorld 1.7 mod replacing the vanilla Mods menu page with a category- and tag-b
 - User-defined tags that can be assigned to multiple mods, with tag-specific folders.
 - Toggle activation for all eligible mods in a tag, and add or remove tags from selected mods.
 - Save, load, and delete named presets containing categories, folders, tags, and activation choices.
+- Search the current category or tag by mod name, PackageId, or author.
 - Protected Core and official DLC activation.
 - Apply changes to the vanilla mod configuration; cancel unapplied changes.
 - Persistent category/tag/folder assignments, collapsed state, and activation choices.
@@ -19,7 +20,7 @@ Newly discovered mods are added to the Normal category. Core and official DLC ar
 
 Loading a preset replaces the current edit draft; it does not change the active mod configuration until Apply is selected. Installed mods missing from an older preset are retained in a default category.
 
-Dependency-aware sorting, search, drag-and-drop ordering, and subscription management are not implemented yet.
+Dependency-aware sorting, drag-and-drop ordering, and subscription management are not implemented yet.
 
 ## Build
 

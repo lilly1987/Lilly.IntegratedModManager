@@ -28,6 +28,7 @@ namespace Lilly.IntegratedModManager
         private string primarySelectedPackageId;
         private int lastSelectedIndex = -1;
         private string currentFolderId;
+        private string searchText = "";
         private bool tagMode;
         private Vector2 modListScroll;
         private Vector2 descriptionScroll;
@@ -97,7 +98,10 @@ namespace Lilly.IntegratedModManager
 
             DrawCategoryTabs(new Rect(20f, 48f, inRect.width - 40f, 44f));
 
-            float contentTop = 100f;
+            Rect searchRect = new Rect(20f, 96f, inRect.width * 0.66f - 30f, 30f);
+            DrawSearchField(searchRect);
+
+            float contentTop = 134f;
             float contentBottom = inRect.height - BottomHeight - 20f;
             float contentHeight = Mathf.Max(100f, contentBottom - contentTop);
             float leftWidth = inRect.width * 0.66f;
@@ -110,6 +114,32 @@ namespace Lilly.IntegratedModManager
             DrawBottomButtons(new Rect(20f, inRect.height - BottomHeight - 8f,
                 inRect.width - 40f, BottomHeight));
             HandleSelectAll();
+        }
+
+        private void DrawSearchField(Rect rect)
+        {
+            Widgets.Label(new Rect(rect.x, rect.y, 52f, rect.height), "검색");
+            string newSearchText = Widgets.TextField(
+                new Rect(rect.x + 54f, rect.y, rect.width - 92f, rect.height),
+                searchText);
+            if (!string.Equals(newSearchText, searchText, StringComparison.Ordinal))
+            {
+                searchText = newSearchText;
+                selectedPackageIds.Clear();
+                primarySelectedPackageId = null;
+                lastSelectedIndex = -1;
+                RefreshVisibleMods();
+            }
+
+            if (!searchText.NullOrEmpty() &&
+                Widgets.ButtonText(new Rect(rect.xMax - 34f, rect.y, 34f, rect.height), "×"))
+            {
+                searchText = "";
+                selectedPackageIds.Clear();
+                primarySelectedPackageId = null;
+                lastSelectedIndex = -1;
+                RefreshVisibleMods();
+            }
         }
 
         private void DrawCategoryTabs(Rect rect)
@@ -264,6 +294,9 @@ namespace Lilly.IntegratedModManager
                     if (mod == null)
                         continue;
 
+                    if (!MatchesSearch(mod))
+                        continue;
+
                     DrawModRow(mod, visibleIndex, viewRect.width, y);
 
                     y += RowHeight;
@@ -330,7 +363,7 @@ namespace Lilly.IntegratedModManager
                 for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
                 {
                     ModMetaData mod = FindMod(folder.ModIds[modIndex]);
-                    if (mod == null)
+                    if (mod == null || !MatchesSearch(mod))
                         continue;
 
                     DrawModRow(mod, visibleIndex, viewRect.width, y);
@@ -1233,7 +1266,7 @@ namespace Lilly.IntegratedModManager
                     for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
                     {
                         ModMetaData mod = FindMod(folder.ModIds[modIndex]);
-                        if (mod != null)
+                        if (mod != null && MatchesSearch(mod))
                             visibleMods.Add(mod);
                     }
                 }
@@ -1252,7 +1285,7 @@ namespace Lilly.IntegratedModManager
                 for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
                 {
                     ModMetaData mod = FindMod(folder.ModIds[modIndex]);
-                    if (mod != null)
+                    if (mod != null && MatchesSearch(mod))
                         visibleMods.Add(mod);
                 }
             }
@@ -1291,7 +1324,8 @@ namespace Lilly.IntegratedModManager
                     continue;
                 for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
                 {
-                    if (FindMod(folder.ModIds[modIndex]) != null)
+                    ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                    if (mod != null && MatchesSearch(mod))
                         height += RowHeight;
                 }
             }
@@ -1309,7 +1343,8 @@ namespace Lilly.IntegratedModManager
                     continue;
                 for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
                 {
-                    if (FindMod(folder.ModIds[modIndex]) != null)
+                    ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                    if (mod != null && MatchesSearch(mod))
                         height += RowHeight;
                 }
             }
@@ -1400,6 +1435,20 @@ namespace Lilly.IntegratedModManager
         private static bool IsProtected(ModMetaData mod)
         {
             return mod.IsCoreMod || mod.Official;
+        }
+
+        private bool MatchesSearch(ModMetaData mod)
+        {
+            if (searchText.NullOrEmpty())
+                return true;
+
+            string query = searchText.Trim();
+            return (mod.Name != null && mod.Name.IndexOf(query,
+                    StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (mod.PackageId != null && mod.PackageId.IndexOf(query,
+                    StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (mod.AuthorsString != null && mod.AuthorsString.IndexOf(query,
+                    StringComparison.OrdinalIgnoreCase) >= 0);
         }
     }
 }

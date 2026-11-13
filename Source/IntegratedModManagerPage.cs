@@ -642,6 +642,10 @@ namespace Lilly.IntegratedModManager
                 SelectAllVisible();
             x += buttonWidth + 8f;
 
+            if (Widgets.ButtonText(new Rect(x, rect.y, buttonWidth, rect.height), "선택 해제"))
+                ClearSelection();
+            x += buttonWidth + 8f;
+
             if (Widgets.ButtonText(new Rect(x, rect.y, buttonWidth, rect.height), "선택 활성화"))
                 SetSelectedEnabled(true);
             x += buttonWidth + 8f;
@@ -695,6 +699,13 @@ namespace Lilly.IntegratedModManager
                 primarySelectedPackageId = visibleMods[0].PackageId;
                 lastSelectedIndex = 0;
             }
+        }
+
+        private void ClearSelection()
+        {
+            selectedPackageIds.Clear();
+            primarySelectedPackageId = null;
+            lastSelectedIndex = -1;
         }
 
         private void SelectMod(int index, bool control, bool shift)
@@ -999,6 +1010,8 @@ namespace Lilly.IntegratedModManager
                     () => SetSelectedEnabled(true)));
                 options.Add(new FloatMenuOption("선택 모드 비활성화",
                     () => SetSelectedEnabled(false)));
+                options.Add(new FloatMenuOption("선택 해제",
+                    () => ClearSelection()));
                 options.Add(new FloatMenuOption("카테고리 이동...",
                     () => OpenMoveMenu()));
             }

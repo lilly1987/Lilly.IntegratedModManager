@@ -9,7 +9,7 @@ namespace Lilly.IntegratedModManager
     {
         private readonly string title;
         private readonly Func<string, bool> acceptAction;
-        private string folderName;
+        private string inputName;
 
         public override Vector2 InitialSize
         {
@@ -22,7 +22,7 @@ namespace Lilly.IntegratedModManager
             Func<string, bool> acceptAction)
         {
             this.title = title;
-            folderName = initialName ?? "";
+            inputName = initialName ?? "";
             this.acceptAction = acceptAction;
             doCloseX = true;
             absorbInputAroundWindow = true;
@@ -36,8 +36,8 @@ namespace Lilly.IntegratedModManager
             Widgets.Label(new Rect(0f, 0f, rect.width, 32f), title);
             Text.Font = GameFont.Small;
 
-            folderName = Widgets.TextField(
-                new Rect(0f, 42f, rect.width, 32f), folderName);
+            inputName = Widgets.TextField(
+                new Rect(0f, 42f, rect.width, 32f), inputName);
 
             float buttonWidth = 120f;
             float buttonY = rect.height - 42f;
@@ -52,7 +52,7 @@ namespace Lilly.IntegratedModManager
                 new Rect(rect.width / 2f + 5f, buttonY, buttonWidth, 32f),
                 "확인"))
             {
-                string trimmedName = folderName.Trim();
+                string trimmedName = inputName.Trim();
                 if (trimmedName.NullOrEmpty())
                 {
                     Messages.Message("이름을 입력하세요.", MessageTypeDefOf.RejectInput);

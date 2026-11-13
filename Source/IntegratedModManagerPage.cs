@@ -16,6 +16,7 @@ namespace Lilly.IntegratedModManager
         private readonly List<ManagerCategoryData> categories;
         private readonly List<ManagerTagData> tags;
         private readonly List<ManagerModData> modStates;
+        private readonly List<ManagerPresetData> presets;
         private readonly HashSet<string> selectedPackageIds =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, ModMetaData> modsByPackageId =
@@ -55,6 +56,7 @@ namespace Lilly.IntegratedModManager
             categories = settings.Categories.Select(category => category.Copy()).ToList();
             tags = settings.Tags.Select(tag => tag.Copy()).ToList();
             modStates = settings.Mods.Select(mod => mod.Copy()).ToList();
+            presets = settings.Presets.Select(preset => preset.Copy()).ToList();
 
             foreach (ModMetaData mod in ModLister.AllInstalledMods)
             {
@@ -71,9 +73,15 @@ namespace Lilly.IntegratedModManager
         public override void DoWindowContents(Rect inRect)
         {
             Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(20f, 10f, inRect.width - 40f, 36f),
+            Widgets.Label(new Rect(20f, 10f, inRect.width - 470f, 36f),
                 "Lilly - Integrated Mod Manager");
             Text.Font = GameFont.Small;
+            if (Widgets.ButtonText(new Rect(inRect.width - 440f, 10f, 115f, 32f),
+                "프리셋 저장"))
+                OpenSavePresetDialog();
+            if (Widgets.ButtonText(new Rect(inRect.width - 315f, 10f, 115f, 32f),
+                "프리셋 불러오기"))
+                OpenPresetMenu();
             if (Widgets.ButtonText(new Rect(inRect.width - 190f, 10f, 170f, 32f),
                 tagMode ? "카테고리 관리" : "태그 관리"))
             {
@@ -1062,6 +1070,151 @@ namespace Lilly.IntegratedModManager
             else
                 Find.WindowStack.Add(new Dialog_MessageBox(
                     "모드 목록을 적용했습니다. 변경사항은 게임을 재시작한 뒤 적용됩니다."));
+        }
+
+        private void OpenSavePresetDialog()
+        {
+            Find.WindowStack.Add(new ManagerFolderNameDialog(
+                "현재 구성 프리셋 저장",
+                "",
+                name =>
+                {
+                    if (presets.Any(preset => string.Equals(preset.Name, name.Trim(),
+                        StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Messages.Message("같은 이름의 프리셋이 이미 있습니다.",
+                            MessageTypeDefOf.RejectInput);
+                        return false;
+                    }
+
+                    ManagerPresetData preset = new ManagerPresetData(
+                        Guid.NewGuid().ToString("N"),
+                        name.Trim(),
+                        categories,
+                        tags,
+                        modStates);
+                    presets.Add(preset);
+                    SavePresetsToSettings();
+                    Messages.Message("프리셋을 저장했습니다: " + preset.Name,
+                        MessageTypeDefOf.PositiveEvent);
+                    return true;
+                }));
+        }
+
+        private void OpenPresetMenu()
+        {
+            if (presets.Count == 0)
+            {
+                Messages.Message("저장된 프리셋이 없습니다.", MessageTypeDefOf.RejectInput);
+                return;
+            }
+
+            List<FloatMenuOption> options = new List<FloatMenuOption>();
+            for (int i = 0; i < presets.Count; i++)
+            {
+                ManagerPresetData preset = presets[i];
+                ManagerPresetData target = preset;
+                options.Add(new FloatMenuOption(
+                    "불러오기: " + target.Name,
+                    () => LoadPreset(target)));
+                options.Add(new FloatMenuOption(
+                    "삭제: " + target.Name,
+                    () => ConfirmDeletePreset(target)));
+            }
+            Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void LoadPreset(ManagerPresetData preset)
+        {
+            if (preset == null)
+                return;
+
+            categories.Clear();
+            categories.AddRange(preset.Categories.Select(category => category.Copy()));
+            tags.Clear();
+            tags.AddRange(preset.Tags.Select(tag => tag.Copy()));
+            modStates.Clear();
+            modStates.AddRange(preset.Mods.Select(mod => mod.Copy()));
+            AddInstalledModsMissingFromPreset();
+
+            currentCategoryId = categories.FirstOrDefault()?.Id;
+            currentTagId = tags.FirstOrDefault()?.Id;
+            currentFolderId = tagMode
+                ? FindCurrentTag()?.Folders.FirstOrDefault()?.Id
+                : FindCurrentCategory()?.Folders.FirstOrDefault()?.Id;
+            selectedPackageIds.Clear();
+            primarySelectedPackageId = null;
+            lastSelectedIndex = -1;
+            modListScroll = Vector2.zero;
+            RefreshVisibleMods();
+            Messages.Message(
+                "프리셋을 편집 화면에 불러왔습니다. 적용을 눌러 설정을 저장하세요: " + preset.Name,
+                MessageTypeDefOf.PositiveEvent);
+        }
+
+        private void AddInstalledModsMissingFromPreset()
+        {
+            ManagerCategoryData normalCategory = categories.FirstOrDefault(category =>
+                string.Equals(category.Id, "normal", StringComparison.OrdinalIgnoreCase));
+            if (normalCategory == null)
+            {
+                normalCategory = new ManagerCategoryData("normal", "일반 모드");
+                categories.Add(normalCategory);
+            }
+
+            ManagerFolderData unfiled = FindFolder(normalCategory, "uncategorized");
+            if (unfiled == null)
+            {
+                unfiled = new ManagerFolderData("uncategorized", "미분류");
+                normalCategory.Folders.Insert(0, unfiled);
+            }
+
+            foreach (ModMetaData mod in modsByPackageId.Values)
+            {
+                if (FindModState(mod.PackageId) == null)
+                    modStates.Add(new ManagerModData(mod.PackageId, mod.Active));
+
+                if (categories.Any(category => category.ModIds != null &&
+                    category.ModIds.Any(packageId => string.Equals(
+                        packageId, mod.PackageId, StringComparison.OrdinalIgnoreCase))))
+                    continue;
+
+                ManagerCategoryData destination = mod.IsCoreMod || mod.Official
+                    ? categories.FirstOrDefault(category =>
+                        string.Equals(category.Id, "core", StringComparison.OrdinalIgnoreCase))
+                    : normalCategory;
+                if (destination == null)
+                    destination = normalCategory;
+                ManagerFolderData destinationFolder =
+                    FindFolder(destination, "uncategorized");
+                if (destinationFolder == null)
+                {
+                    destinationFolder = new ManagerFolderData("uncategorized", "미분류");
+                    destination.Folders.Insert(0, destinationFolder);
+                }
+                destination.ModIds.Add(mod.PackageId);
+                destinationFolder.ModIds.Add(mod.PackageId);
+            }
+        }
+
+        private void ConfirmDeletePreset(ManagerPresetData preset)
+        {
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                "프리셋 '" + preset.Name + "'을(를) 삭제할까요?",
+                () =>
+                {
+                    presets.Remove(preset);
+                    SavePresetsToSettings();
+                    Messages.Message("프리셋을 삭제했습니다: " + preset.Name,
+                        MessageTypeDefOf.PositiveEvent);
+                },
+                destructive: true));
+        }
+
+        private void SavePresetsToSettings()
+        {
+            settings.Presets = presets.Select(preset => preset.Copy()).ToList();
+            IntegratedModManagerMod.Instance.WriteSettings();
         }
 
         private void RefreshVisibleMods()

@@ -28,6 +28,7 @@ namespace Lilly.IntegratedModManager
         public List<ManagerCategoryData> Categories = new List<ManagerCategoryData>();
         public List<ManagerTagData> Tags = new List<ManagerTagData>();
         public List<ManagerModData> Mods = new List<ManagerModData>();
+        public List<ManagerPresetData> Presets = new List<ManagerPresetData>();
 
         public override void ExposeData()
         {
@@ -35,6 +36,7 @@ namespace Lilly.IntegratedModManager
             Scribe_Collections.Look(ref Categories, "categories", LookMode.Deep);
             Scribe_Collections.Look(ref Tags, "tags", LookMode.Deep);
             Scribe_Collections.Look(ref Mods, "mods", LookMode.Deep);
+            Scribe_Collections.Look(ref Presets, "presets", LookMode.Deep);
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
                 EnsureInitialized();
         }
@@ -47,6 +49,14 @@ namespace Lilly.IntegratedModManager
                 Mods = new List<ManagerModData>();
             if (Tags == null)
                 Tags = new List<ManagerTagData>();
+            if (Presets == null)
+                Presets = new List<ManagerPresetData>();
+            for (int i = Presets.Count - 1; i >= 0; i--)
+            {
+                if (Presets[i] == null || Presets[i].Id.NullOrEmpty() ||
+                    Presets[i].Name.NullOrEmpty())
+                    Presets.RemoveAt(i);
+            }
 
             if (Categories.Count == 0)
             {
@@ -421,6 +431,56 @@ namespace Lilly.IntegratedModManager
             ManagerModData copy = new ManagerModData(PackageId, Enabled);
             copy.TagIds = TagIds == null ? new List<string>() : new List<string>(TagIds);
             return copy;
+        }
+    }
+
+    public sealed class ManagerPresetData : IExposable
+    {
+        public string Id;
+        public string Name;
+        public List<ManagerCategoryData> Categories = new List<ManagerCategoryData>();
+        public List<ManagerTagData> Tags = new List<ManagerTagData>();
+        public List<ManagerModData> Mods = new List<ManagerModData>();
+
+        public ManagerPresetData()
+        {
+        }
+
+        public ManagerPresetData(
+            string id,
+            string name,
+            IEnumerable<ManagerCategoryData> categories,
+            IEnumerable<ManagerTagData> tags,
+            IEnumerable<ManagerModData> mods)
+        {
+            Id = id;
+            Name = name;
+            Categories = categories.Select(category => category.Copy()).ToList();
+            Tags = tags.Select(tag => tag.Copy()).ToList();
+            Mods = mods.Select(mod => mod.Copy()).ToList();
+        }
+
+        public void ExposeData()
+        {
+            Scribe_Values.Look(ref Id, "id");
+            Scribe_Values.Look(ref Name, "name");
+            Scribe_Collections.Look(ref Categories, "categories", LookMode.Deep);
+            Scribe_Collections.Look(ref Tags, "tags", LookMode.Deep);
+            Scribe_Collections.Look(ref Mods, "mods", LookMode.Deep);
+            if (Scribe.mode == LoadSaveMode.PostLoadInit)
+            {
+                if (Categories == null)
+                    Categories = new List<ManagerCategoryData>();
+                if (Tags == null)
+                    Tags = new List<ManagerTagData>();
+                if (Mods == null)
+                    Mods = new List<ManagerModData>();
+            }
+        }
+
+        internal ManagerPresetData Copy()
+        {
+            return new ManagerPresetData(Id, Name, Categories, Tags, Mods);
         }
     }
 }

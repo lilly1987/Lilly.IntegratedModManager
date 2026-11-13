@@ -35,7 +35,7 @@ namespace Lilly.IntegratedModManager
             Event e = Event.current;
             if (e.type == EventType.KeyDown)
             {
-                if (e.keyCode == KeyCode.Return)
+                if (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter)
                 {
                     TryAccept();
                     e.Use();

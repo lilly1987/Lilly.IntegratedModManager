@@ -203,9 +203,12 @@ namespace Lilly.IntegratedModManager
                     {
                         string packageId = folder.ModIds[modIndex];
                         ManagerModData modData = FindModData(packageId);
+                        bool belongsToTag = modData != null &&
+                            (tag.IsSystem
+                                ? modData.TagIds == null || modData.TagIds.Count == 0
+                                : modData.TagIds != null && modData.TagIds.Contains(tag.Id));
                         if (packageId.NullOrEmpty() || modData == null ||
-                            modData.TagIds == null || !modData.TagIds.Contains(tag.Id) ||
-                            !linkedIds.Add(packageId))
+                            !belongsToTag || !linkedIds.Add(packageId))
                             folder.ModIds.RemoveAt(modIndex);
                     }
                 }
@@ -220,8 +223,11 @@ namespace Lilly.IntegratedModManager
                 for (int modIndex = 0; modIndex < Mods.Count; modIndex++)
                 {
                     ManagerModData modData = Mods[modIndex];
-                    if (modData != null && modData.TagIds != null &&
-                        modData.TagIds.Contains(tag.Id) && linkedIds.Add(modData.PackageId))
+                    bool belongsToTag = modData != null &&
+                        (tag.IsSystem
+                            ? modData.TagIds == null || modData.TagIds.Count == 0
+                            : modData.TagIds != null && modData.TagIds.Contains(tag.Id));
+                    if (belongsToTag && linkedIds.Add(modData.PackageId))
                         unfiled.ModIds.Add(modData.PackageId);
                 }
             }

@@ -87,6 +87,8 @@ namespace Lilly.IntegratedModManager
 
         public override void DoWindowContents(Rect inRect)
         {
+            Widgets.DrawBoxSolid(inRect, Color.black);
+
             Text.Font = GameFont.Medium;
             Widgets.Label(new Rect(20f, 10f, inRect.width - 470f, 36f),
                 "Lilly - Integrated Mod Manager");
@@ -500,7 +502,7 @@ namespace Lilly.IntegratedModManager
                 if (folder.Id == currentFolderId)
                     Widgets.DrawHighlight(titleRect);
                 if (Widgets.ButtonText(titleRect,
-                    folder.Name + " (" + GetInstalledCount(folder) + ")"))
+                    folder.Name + " (" + GetInstalledCount(tag, folder) + ")"))
                     currentFolderId = folder.Id;
 
                 float actionX = headerRect.xMax - 186f;
@@ -517,9 +519,10 @@ namespace Lilly.IntegratedModManager
                 if (folder.Collapsed)
                     continue;
 
-                for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                List<string> packageIds = GetTagFolderModIds(tag, folder);
+                for (int modIndex = 0; modIndex < packageIds.Count; modIndex++)
                 {
-                    ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                    ModMetaData mod = FindMod(packageIds[modIndex]);
                     if (mod == null || !MatchesSearch(mod))
                         continue;
 
@@ -1781,9 +1784,10 @@ namespace Lilly.IntegratedModManager
                     ManagerFolderData folder = tag.Folders[folderIndex];
                     if (folder.Collapsed)
                         continue;
-                    for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                    List<string> packageIds = GetTagFolderModIds(tag, folder);
+                    for (int modIndex = 0; modIndex < packageIds.Count; modIndex++)
                     {
-                        ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                        ModMetaData mod = FindMod(packageIds[modIndex]);
                         if (mod != null && MatchesSearch(mod))
                             visibleMods.Add(mod);
                     }
@@ -1880,6 +1884,57 @@ namespace Lilly.IntegratedModManager
             return count;
         }
 
+        private int GetInstalledCount(ManagerTagData tag, ManagerFolderData folder)
+        {
+            return GetTagFolderModIds(tag, folder)
+                .Count(packageId => FindMod(packageId) != null);
+        }
+
+        private List<string> GetTagFolderModIds(
+            ManagerTagData tag,
+            ManagerFolderData folder)
+        {
+            List<string> packageIds = new List<string>();
+            if (tag == null || folder == null)
+                return packageIds;
+
+            HashSet<string> includedIds =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < folder.ModIds.Count; i++)
+            {
+                string packageId = folder.ModIds[i];
+                if (HasTag(packageId, tag.Id) && includedIds.Add(packageId))
+                    packageIds.Add(packageId);
+            }
+
+            if (!tag.IsSystem || !string.Equals(
+                folder.Id, "uncategorized", StringComparison.OrdinalIgnoreCase))
+                return packageIds;
+
+            HashSet<string> assignedToAnotherFolder =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int folderIndex = 0; folderIndex < tag.Folders.Count; folderIndex++)
+            {
+                ManagerFolderData otherFolder = tag.Folders[folderIndex];
+                if (otherFolder == null || ReferenceEquals(otherFolder, folder))
+                    continue;
+
+                for (int modIndex = 0; modIndex < otherFolder.ModIds.Count; modIndex++)
+                    assignedToAnotherFolder.Add(otherFolder.ModIds[modIndex]);
+            }
+
+            for (int modIndex = 0; modIndex < modStates.Count; modIndex++)
+            {
+                ManagerModData modData = modStates[modIndex];
+                if (modData != null && HasTag(modData.PackageId, tag.Id) &&
+                    !assignedToAnotherFolder.Contains(modData.PackageId) &&
+                    includedIds.Add(modData.PackageId))
+                    packageIds.Add(modData.PackageId);
+            }
+
+            return packageIds;
+        }
+
         private float GetFolderListHeight(ManagerCategoryData category)
         {
             float height = 0f;
@@ -1908,9 +1963,10 @@ namespace Lilly.IntegratedModManager
                 height += RowHeight;
                 if (folder.Collapsed)
                     continue;
-                for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                List<string> packageIds = GetTagFolderModIds(tag, folder);
+                for (int modIndex = 0; modIndex < packageIds.Count; modIndex++)
                 {
-                    ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                    ModMetaData mod = FindMod(packageIds[modIndex]);
                     if (mod != null && MatchesSearch(mod))
                         height += RowHeight;
                 }

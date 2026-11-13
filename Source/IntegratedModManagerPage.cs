@@ -41,6 +41,8 @@ namespace Lilly.IntegratedModManager
         private bool tagMode;
         private Vector2 modListScroll;
         private Vector2 descriptionScroll;
+        private string dragPackageId;
+        private bool isDraggingMod;
 
         public override Vector2 InitialSize
         {
@@ -425,7 +427,29 @@ namespace Lilly.IntegratedModManager
             else
                 Widgets.DrawHighlightIfMouseover(rowRect);
 
-            if (Event.current.type == EventType.MouseDown && Event.current.button == 1 &&
+            if (isDraggingMod && !dragPackageId.NullOrEmpty() &&
+                !string.Equals(dragPackageId, mod.PackageId, StringComparison.OrdinalIgnoreCase) &&
+                rowRect.Contains(Event.current.mousePosition))
+            {
+                Widgets.DrawLightHighlight(rowRect);
+                if (Event.current.type == EventType.MouseDrag)
+                    HandleDragDropToMod(mod.PackageId);
+            }
+
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 &&
+                rowRect.Contains(Event.current.mousePosition))
+            {
+                if (!selectedPackageIds.Contains(mod.PackageId))
+                {
+                    selectedPackageIds.Clear();
+                    selectedPackageIds.Add(mod.PackageId);
+                    primarySelectedPackageId = mod.PackageId;
+                }
+                dragPackageId = mod.PackageId;
+                isDraggingMod = true;
+                Event.current.Use();
+            }
+            else if (Event.current.type == EventType.MouseDown && Event.current.button == 1 &&
                 rowRect.Contains(Event.current.mousePosition))
             {
                 if (!selectedPackageIds.Contains(mod.PackageId))
@@ -435,6 +459,12 @@ namespace Lilly.IntegratedModManager
                     primarySelectedPackageId = mod.PackageId;
                 }
                 OpenModContextMenu(mod);
+                Event.current.Use();
+            }
+            else if (Event.current.type == EventType.MouseUp && isDraggingMod)
+            {
+                isDraggingMod = false;
+                dragPackageId = null;
                 Event.current.Use();
             }
 
@@ -1696,6 +1726,53 @@ namespace Lilly.IntegratedModManager
                 default:
                     return true;
             }
+        }
+
+        private void HandleDragDropToMod(string targetPackageId)
+        {
+            if (dragPackageId.NullOrEmpty() ||
+                string.Equals(dragPackageId, targetPackageId, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            List<string> modIds = GetCurrentFolderModIds();
+            if (modIds == null || modIds.Count <= 1)
+                return;
+
+            int fromIndex = modIds.IndexOf(dragPackageId);
+            int targetIndex = modIds.IndexOf(targetPackageId);
+            if (fromIndex < 0 || targetIndex < 0)
+                return;
+
+            if (fromIndex == targetIndex)
+                return;
+
+            string moved = modIds[fromIndex];
+            modIds.RemoveAt(fromIndex);
+            if (targetIndex > fromIndex)
+                targetIndex--;
+            modIds.Insert(targetIndex, moved);
+            SetCurrentFolderModIds(modIds);
+            RefreshVisibleMods();
+            isDraggingMod = false;
+            dragPackageId = null;
+        }
+
+        private List<string> GetCurrentFolderModIds()
+        {
+            ManagerFolderData folder = tagMode
+                ? FindFolder(FindCurrentTag(), currentFolderId)
+                : FindFolder(FindCurrentCategory(), currentFolderId);
+            return folder == null ? null : folder.ModIds;
+        }
+
+        private void SetCurrentFolderModIds(List<string> modIds)
+        {
+            ManagerFolderData folder = tagMode
+                ? FindFolder(FindCurrentTag(), currentFolderId)
+                : FindFolder(FindCurrentCategory(), currentFolderId);
+            if (folder == null)
+                return;
+            folder.ModIds = modIds ?? new List<string>();
         }
 
         private string GetDisplayName(ModMetaData mod)

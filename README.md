@@ -20,7 +20,7 @@ Newly discovered mods are added to the Normal category. Core and official DLC ar
 
 Loading a preset replaces the current edit draft; it does not change the active mod configuration until Apply is selected. Installed mods missing from an older preset are retained in a default category.
 
-Dependency-aware sorting follows the active RimWorld load order, while drag-and-drop ordering and subscription management remain future work.
+Dependency-aware sorting follows the active RimWorld load order, and drag-and-drop reorder now works for multi-selected mod groups within the current folder. Subscription management remains future work.
 
 ## Build
 

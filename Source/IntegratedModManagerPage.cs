@@ -43,6 +43,7 @@ namespace Lilly.IntegratedModManager
         private Vector2 descriptionScroll;
         private string dragPackageId;
         private bool isDraggingMod;
+        private readonly List<string> dragSelection = new List<string>();
 
         public override Vector2 InitialSize
         {
@@ -540,7 +541,10 @@ namespace Lilly.IntegratedModManager
                     selectedPackageIds.Add(mod.PackageId);
                     primarySelectedPackageId = mod.PackageId;
                 }
+
                 dragPackageId = mod.PackageId;
+                dragSelection.Clear();
+                dragSelection.AddRange(selectedPackageIds);
                 isDraggingMod = true;
                 Event.current.Use();
             }
@@ -560,6 +564,7 @@ namespace Lilly.IntegratedModManager
             {
                 isDraggingMod = false;
                 dragPackageId = null;
+                dragSelection.Clear();
                 Event.current.Use();
             }
 
@@ -1880,23 +1885,45 @@ namespace Lilly.IntegratedModManager
             if (modIds == null || modIds.Count <= 1)
                 return;
 
-            int fromIndex = modIds.IndexOf(dragPackageId);
-            int targetIndex = modIds.IndexOf(targetPackageId);
-            if (fromIndex < 0 || targetIndex < 0)
+            List<string> movingIds = dragSelection.Count > 0
+                ? dragSelection.Where(id => !id.NullOrEmpty()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string> { dragPackageId };
+            if (movingIds.Count == 0)
                 return;
 
-            if (fromIndex == targetIndex)
-                return;
+            List<string> sourceList = new List<string>(modIds);
+            foreach (string movingId in movingIds)
+            {
+                int currentIndex = sourceList.IndexOf(movingId);
+                if (currentIndex >= 0)
+                    sourceList.RemoveAt(currentIndex);
+            }
 
-            string moved = modIds[fromIndex];
-            modIds.RemoveAt(fromIndex);
-            if (targetIndex > fromIndex)
-                targetIndex--;
-            modIds.Insert(targetIndex, moved);
-            SetCurrentFolderModIds(modIds);
+            int targetIndex = sourceList.IndexOf(targetPackageId);
+            if (targetIndex < 0)
+                targetIndex = sourceList.Count;
+
+            List<string> reordered = new List<string>(sourceList.Count + movingIds.Count);
+            for (int i = 0; i < sourceList.Count; i++)
+            {
+                if (i == targetIndex)
+                {
+                    reordered.AddRange(movingIds);
+                }
+                reordered.Add(sourceList[i]);
+            }
+            if (targetIndex >= sourceList.Count)
+                reordered.AddRange(movingIds);
+
+            SetCurrentFolderModIds(reordered);
+            selectedPackageIds.Clear();
+            for (int i = 0; i < movingIds.Count; i++)
+                selectedPackageIds.Add(movingIds[i]);
+            primarySelectedPackageId = movingIds.LastOrDefault();
             RefreshVisibleMods();
             isDraggingMod = false;
             dragPackageId = null;
+            dragSelection.Clear();
         }
 
         private List<string> GetCurrentFolderModIds()

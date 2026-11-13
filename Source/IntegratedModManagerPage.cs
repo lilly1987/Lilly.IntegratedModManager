@@ -24,6 +24,7 @@ namespace Lilly.IntegratedModManager
         private string currentCategoryId;
         private string primarySelectedPackageId;
         private int lastSelectedIndex = -1;
+        private string currentFolderId;
         private Vector2 modListScroll;
         private Vector2 descriptionScroll;
 
@@ -58,6 +59,7 @@ namespace Lilly.IntegratedModManager
             }
 
             currentCategoryId = categories[0].Id;
+            currentFolderId = categories[0].Folders[0].Id;
             RefreshVisibleMods();
         }
 
@@ -108,6 +110,9 @@ namespace Lilly.IntegratedModManager
                 if (Widgets.ButtonText(labelRect, label))
                 {
                     currentCategoryId = category.Id;
+                    currentFolderId = category.Folders.Count > 0
+                        ? category.Folders[0].Id
+                        : null;
                     selectedPackageIds.Clear();
                     primarySelectedPackageId = null;
                     lastSelectedIndex = -1;
@@ -124,14 +129,54 @@ namespace Lilly.IntegratedModManager
 
             Widgets.DrawBox(rect);
             Rect innerRect = rect.ContractedBy(8f);
-            float viewHeight = Mathf.Max(innerRect.height, visibleMods.Count * RowHeight);
+            float viewHeight = Mathf.Max(innerRect.height, GetFolderListHeight(category));
             Rect viewRect = new Rect(0f, 0f, innerRect.width - 16f, viewHeight);
             Widgets.BeginScrollView(innerRect, ref modListScroll, viewRect);
 
-            for (int i = 0; i < visibleMods.Count; i++)
+            float y = 0f;
+            int visibleIndex = 0;
+            for (int folderIndex = 0; folderIndex < category.Folders.Count; folderIndex++)
             {
-                ModMetaData mod = visibleMods[i];
-                Rect rowRect = new Rect(0f, i * RowHeight, viewRect.width, RowHeight);
+                ManagerFolderData folder = category.Folders[folderIndex];
+                Rect headerRect = new Rect(0f, y, viewRect.width, RowHeight);
+                Widgets.DrawLightHighlight(headerRect);
+                string foldLabel = folder.Collapsed ? "▶" : "▼";
+                if (Widgets.ButtonText(new Rect(headerRect.x + 2f, y + 2f, 28f, 26f), foldLabel))
+                {
+                    folder.Collapsed = !folder.Collapsed;
+                    RefreshVisibleMods();
+                }
+
+                Rect titleRect = new Rect(headerRect.x + 32f, y + 2f,
+                    Mathf.Max(30f, headerRect.width - 225f), 26f);
+                if (folder.Id == currentFolderId)
+                    Widgets.DrawHighlight(titleRect);
+                if (Widgets.ButtonText(titleRect,
+                    folder.Name + " (" + GetInstalledCount(folder) + ")"))
+                    currentFolderId = folder.Id;
+
+                float actionX = headerRect.xMax - 186f;
+                if (Widgets.ButtonText(new Rect(actionX, y + 2f, 42f, 26f), "+"))
+                    OpenCreateFolderDialog(category, folder);
+                if (Widgets.ButtonText(new Rect(actionX + 46f, y + 2f, 62f, 26f), "이름"))
+                    OpenRenameFolderDialog(category, folder);
+                bool isDefaultFolder = folder.Id == "uncategorized";
+                GUI.enabled = !isDefaultFolder;
+                if (Widgets.ButtonText(new Rect(actionX + 112f, y + 2f, 62f, 26f), "삭제"))
+                    ConfirmDeleteFolder(category, folder);
+                GUI.enabled = true;
+                y += RowHeight;
+
+                if (folder.Collapsed)
+                    continue;
+
+                for (int folderModIndex = 0; folderModIndex < folder.ModIds.Count; folderModIndex++)
+                {
+                    ModMetaData mod = FindMod(folder.ModIds[folderModIndex]);
+                    if (mod == null)
+                        continue;
+
+                    Rect rowRect = new Rect(0f, y, viewRect.width, RowHeight);
                 if (selectedPackageIds.Contains(mod.PackageId))
                     Widgets.DrawHighlight(rowRect);
                 else
@@ -155,8 +200,12 @@ namespace Lilly.IntegratedModManager
                 bool control = Event.current.control;
                 bool shift = Event.current.shift;
                 if (Widgets.ButtonInvisible(nameRect))
-                    SelectMod(i, control, shift);
+                    SelectMod(visibleIndex, control, shift);
                 Widgets.Label(nameRect, name);
+
+                    y += RowHeight;
+                    visibleIndex++;
+                }
             }
 
             Widgets.EndScrollView();
@@ -297,10 +346,24 @@ namespace Lilly.IntegratedModManager
             {
                 ManagerCategoryData category = categories[i];
                 ManagerCategoryData target = category;
-                if (target.Id == currentCategoryId)
+                if (target.Id != currentCategoryId)
+                {
+                    options.Add(new FloatMenuOption(target.Name + " / 미분류",
+                        () => MoveSelectionTo(target)));
                     continue;
+                }
 
-                options.Add(new FloatMenuOption(target.Name, () => MoveSelectionTo(target)));
+                for (int folderIndex = 0; folderIndex < target.Folders.Count; folderIndex++)
+                {
+                    ManagerFolderData folder = target.Folders[folderIndex];
+                    if (folder.Id == currentFolderId)
+                        continue;
+
+                    ManagerFolderData targetFolder = folder;
+                    options.Add(new FloatMenuOption(
+                        target.Name + " / " + targetFolder.Name,
+                        () => MoveSelectionToFolder(target, targetFolder)));
+                }
             }
             if (options.Count > 0)
                 Find.WindowStack.Add(new FloatMenu(options));
@@ -312,6 +375,12 @@ namespace Lilly.IntegratedModManager
                 return;
 
             List<string> movingIds = selectedPackageIds.ToList();
+            ManagerFolderData targetFolder = FindFolder(target, "uncategorized");
+            if (targetFolder == null)
+            {
+                targetFolder = new ManagerFolderData("uncategorized", "미분류");
+                target.Folders.Insert(0, targetFolder);
+            }
             for (int i = 0; i < movingIds.Count; i++)
             {
                 string packageId = movingIds[i];
@@ -320,14 +389,143 @@ namespace Lilly.IntegratedModManager
                     continue;
 
                 for (int j = 0; j < categories.Count; j++)
+                {
                     categories[j].ModIds.RemoveAll(id =>
                         string.Equals(id, packageId, StringComparison.OrdinalIgnoreCase));
+                    for (int folderIndex = 0; folderIndex < categories[j].Folders.Count; folderIndex++)
+                        categories[j].Folders[folderIndex].ModIds.RemoveAll(id =>
+                            string.Equals(id, packageId, StringComparison.OrdinalIgnoreCase));
+                }
                 target.ModIds.Add(packageId);
+                targetFolder.ModIds.Add(packageId);
             }
 
             selectedPackageIds.Clear();
             primarySelectedPackageId = null;
             RefreshVisibleMods();
+        }
+
+        private void MoveSelectionToFolder(
+            ManagerCategoryData category,
+            ManagerFolderData folder)
+        {
+            if (category == null || folder == null)
+                return;
+
+            folder.Collapsed = false;
+            List<string> movingIds = selectedPackageIds.ToList();
+            for (int i = 0; i < movingIds.Count; i++)
+            {
+                string packageId = movingIds[i];
+                ModMetaData mod = FindMod(packageId);
+                if (mod == null || IsProtected(mod))
+                    continue;
+
+                for (int folderIndex = 0; folderIndex < category.Folders.Count; folderIndex++)
+                    category.Folders[folderIndex].ModIds.RemoveAll(id =>
+                        string.Equals(id, packageId, StringComparison.OrdinalIgnoreCase));
+                folder.ModIds.Add(packageId);
+            }
+
+            currentFolderId = folder.Id;
+            selectedPackageIds.Clear();
+            primarySelectedPackageId = null;
+            RefreshVisibleMods();
+        }
+
+        private void OpenCreateFolderDialog(
+            ManagerCategoryData category,
+            ManagerFolderData insertAfter)
+        {
+            Find.WindowStack.Add(new ManagerFolderNameDialog(
+                "새 폴더",
+                "",
+                name =>
+                {
+                    if (HasFolderName(category, name, null))
+                    {
+                        Messages.Message("같은 이름의 폴더가 이미 있습니다.",
+                            MessageTypeDefOf.RejectInput);
+                        return false;
+                    }
+
+                    ManagerFolderData folder = new ManagerFolderData(
+                        Guid.NewGuid().ToString("N"), name.Trim());
+                    int index = category.Folders.IndexOf(insertAfter);
+                    category.Folders.Insert(index < 0 ? category.Folders.Count : index + 1,
+                        folder);
+                    currentFolderId = folder.Id;
+                    return true;
+                }));
+        }
+
+        private void OpenRenameFolderDialog(
+            ManagerCategoryData category,
+            ManagerFolderData folder)
+        {
+            Find.WindowStack.Add(new ManagerFolderNameDialog(
+                "폴더 이름 변경",
+                folder.Name,
+                name =>
+                {
+                    if (HasFolderName(category, name, folder))
+                    {
+                        Messages.Message("같은 이름의 폴더가 이미 있습니다.",
+                            MessageTypeDefOf.RejectInput);
+                        return false;
+                    }
+
+                    folder.Name = name.Trim();
+                    return true;
+                }));
+        }
+
+        private void ConfirmDeleteFolder(
+            ManagerCategoryData category,
+            ManagerFolderData folder)
+        {
+            if (folder == null || folder.Id == "uncategorized")
+                return;
+
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                "폴더를 삭제할까요? 폴더 안의 모드는 미분류 폴더로 이동합니다.",
+                () =>
+                {
+                    ManagerFolderData uncategorized = FindFolder(category, "uncategorized");
+                    if (uncategorized == null)
+                    {
+                        uncategorized = new ManagerFolderData("uncategorized", "미분류");
+                        category.Folders.Insert(0, uncategorized);
+                    }
+
+                    for (int i = 0; i < folder.ModIds.Count; i++)
+                    {
+                        string packageId = folder.ModIds[i];
+                        if (!uncategorized.ModIds.Contains(packageId))
+                            uncategorized.ModIds.Add(packageId);
+                    }
+                    category.Folders.Remove(folder);
+                    currentFolderId = uncategorized.Id;
+                    RefreshVisibleMods();
+                },
+                destructive: true));
+        }
+
+        private static bool HasFolderName(
+            ManagerCategoryData category,
+            string name,
+            ManagerFolderData except)
+        {
+            if (name.NullOrEmpty())
+                return true;
+            for (int i = 0; i < category.Folders.Count; i++)
+            {
+                ManagerFolderData folder = category.Folders[i];
+                if (folder != except && string.Equals(folder.Name, name.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private void ApplyChanges()
@@ -373,11 +571,17 @@ namespace Lilly.IntegratedModManager
             if (category == null)
                 return;
 
-            for (int i = 0; i < category.ModIds.Count; i++)
+            for (int folderIndex = 0; folderIndex < category.Folders.Count; folderIndex++)
             {
-                ModMetaData mod = FindMod(category.ModIds[i]);
-                if (mod != null)
-                    visibleMods.Add(mod);
+                ManagerFolderData folder = category.Folders[folderIndex];
+                if (folder.Collapsed)
+                    continue;
+                for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                {
+                    ModMetaData mod = FindMod(folder.ModIds[modIndex]);
+                    if (mod != null)
+                        visibleMods.Add(mod);
+                }
             }
         }
 
@@ -390,6 +594,49 @@ namespace Lilly.IntegratedModManager
                     count++;
             }
             return count;
+        }
+
+        private int GetInstalledCount(ManagerFolderData folder)
+        {
+            int count = 0;
+            for (int i = 0; i < folder.ModIds.Count; i++)
+            {
+                if (modsByPackageId.ContainsKey(folder.ModIds[i]))
+                    count++;
+            }
+            return count;
+        }
+
+        private float GetFolderListHeight(ManagerCategoryData category)
+        {
+            float height = 0f;
+            for (int i = 0; i < category.Folders.Count; i++)
+            {
+                ManagerFolderData folder = category.Folders[i];
+                height += RowHeight;
+                if (folder.Collapsed)
+                    continue;
+                for (int modIndex = 0; modIndex < folder.ModIds.Count; modIndex++)
+                {
+                    if (FindMod(folder.ModIds[modIndex]) != null)
+                        height += RowHeight;
+                }
+            }
+            return height;
+        }
+
+        private static ManagerFolderData FindFolder(ManagerCategoryData category, string id)
+        {
+            if (category == null || category.Folders == null)
+                return null;
+            for (int i = 0; i < category.Folders.Count; i++)
+            {
+                if (category.Folders[i] != null &&
+                    string.Equals(category.Folders[i].Id, id,
+                        StringComparison.OrdinalIgnoreCase))
+                    return category.Folders[i];
+            }
+            return null;
         }
 
         private ManagerCategoryData FindCurrentCategory()

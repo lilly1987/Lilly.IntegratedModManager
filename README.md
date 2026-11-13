@@ -7,13 +7,14 @@ RimWorld 1.7 mod replacing the vanilla Mods menu page with a category-based mana
 - Category activation state and per-mod activation state.
 - Ctrl-click, Shift-click, and Ctrl+A multi-selection.
 - Move selected mods between categories.
+- Category-specific folders with create, rename, collapse, move, and delete operations.
 - Protected Core and official DLC activation.
 - Apply changes to the vanilla mod configuration; cancel unapplied changes.
-- Persistent category assignments and activation choices.
+- Persistent category/folder assignments, collapsed state, and activation choices.
 
 Newly discovered mods are added to the Normal category. Core and official DLC are protected from moving or disabling. Changes apply on the next game restart.
 
-This is the first implementation milestone. Folders, tags, presets, dependency-aware sorting, search, and subscription management are not implemented yet.
+Tags, presets, dependency-aware sorting, search, drag-and-drop ordering, and subscription management are not implemented yet.
 
 ## Build
 

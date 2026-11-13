@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Verse;
 
 namespace Lilly.IntegratedModManager
@@ -67,6 +68,49 @@ namespace Lilly.IntegratedModManager
 
                 if (category.ModIds == null)
                     category.ModIds = new List<string>();
+                if (category.Folders == null)
+                    category.Folders = new List<ManagerFolderData>();
+                if (category.Folders.Count == 0)
+                    category.Folders.Add(new ManagerFolderData(
+                        "uncategorized", "미분류"));
+
+                HashSet<string> folderPackageIds =
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int folderIndex = category.Folders.Count - 1; folderIndex >= 0; folderIndex--)
+                {
+                    ManagerFolderData folder = category.Folders[folderIndex];
+                    if (folder == null)
+                    {
+                        category.Folders.RemoveAt(folderIndex);
+                        continue;
+                    }
+
+                    if (folder.ModIds == null)
+                        folder.ModIds = new List<string>();
+                    for (int modIndex = folder.ModIds.Count - 1; modIndex >= 0; modIndex--)
+                    {
+                        string packageId = folder.ModIds[modIndex];
+                        if (packageId.NullOrEmpty() ||
+                            !category.ModIds.Contains(packageId) ||
+                            !folderPackageIds.Add(packageId))
+                            folder.ModIds.RemoveAt(modIndex);
+                    }
+                }
+
+                ManagerFolderData uncategorized = FindFolder(category, "uncategorized");
+                if (uncategorized == null)
+                {
+                    uncategorized = new ManagerFolderData("uncategorized", "미분류");
+                    category.Folders.Insert(0, uncategorized);
+                }
+
+                for (int modIndex = 0; modIndex < category.ModIds.Count; modIndex++)
+                {
+                    string packageId = category.ModIds[modIndex];
+                    if (folderPackageIds.Add(packageId))
+                        uncategorized.ModIds.Add(packageId);
+                }
+
                 for (int j = category.ModIds.Count - 1; j >= 0; j--)
                 {
                     string packageId = category.ModIds[j];
@@ -88,8 +132,29 @@ namespace Lilly.IntegratedModManager
                     ManagerCategoryData category =
                         mod.IsCoreMod || mod.Official ? coreCategory : normalCategory;
                     category.ModIds.Add(packageId);
+                    ManagerFolderData uncategorized = FindFolder(category, "uncategorized");
+                    if (uncategorized == null)
+                    {
+                        uncategorized = new ManagerFolderData("uncategorized", "미분류");
+                        category.Folders.Insert(0, uncategorized);
+                    }
+                    uncategorized.ModIds.Add(packageId);
                 }
             }
+        }
+
+        private static ManagerFolderData FindFolder(ManagerCategoryData category, string id)
+        {
+            if (category.Folders == null)
+                return null;
+            for (int i = 0; i < category.Folders.Count; i++)
+            {
+                if (category.Folders[i] != null &&
+                    string.Equals(category.Folders[i].Id, id,
+                        StringComparison.OrdinalIgnoreCase))
+                    return category.Folders[i];
+            }
+            return null;
         }
 
         internal ManagerCategoryData FindCategory(string id)
@@ -138,6 +203,7 @@ namespace Lilly.IntegratedModManager
         public string Name;
         public bool Enabled = true;
         public List<string> ModIds = new List<string>();
+        public List<ManagerFolderData> Folders = new List<ManagerFolderData>();
 
         public ManagerCategoryData()
         {
@@ -155,12 +221,52 @@ namespace Lilly.IntegratedModManager
             Scribe_Values.Look(ref Name, "name");
             Scribe_Values.Look(ref Enabled, "enabled", true);
             Scribe_Collections.Look(ref ModIds, "mods", LookMode.Value);
+            Scribe_Collections.Look(ref Folders, "folders", LookMode.Deep);
         }
 
         internal ManagerCategoryData Copy()
         {
             ManagerCategoryData copy = new ManagerCategoryData(Id, Name);
             copy.Enabled = Enabled;
+            copy.ModIds = ModIds == null
+                ? new List<string>()
+                : new List<string>(ModIds);
+            copy.Folders = Folders == null
+                ? new List<ManagerFolderData>()
+                : Folders.Select(folder => folder.Copy()).ToList();
+            return copy;
+        }
+    }
+
+    public sealed class ManagerFolderData : IExposable
+    {
+        public string Id;
+        public string Name;
+        public bool Collapsed;
+        public List<string> ModIds = new List<string>();
+
+        public ManagerFolderData()
+        {
+        }
+
+        public ManagerFolderData(string id, string name)
+        {
+            Id = id;
+            Name = name;
+        }
+
+        public void ExposeData()
+        {
+            Scribe_Values.Look(ref Id, "id");
+            Scribe_Values.Look(ref Name, "name");
+            Scribe_Values.Look(ref Collapsed, "collapsed", false);
+            Scribe_Collections.Look(ref ModIds, "mods", LookMode.Value);
+        }
+
+        internal ManagerFolderData Copy()
+        {
+            ManagerFolderData copy = new ManagerFolderData(Id, Name);
+            copy.Collapsed = Collapsed;
             copy.ModIds = ModIds == null
                 ? new List<string>()
                 : new List<string>(ModIds);

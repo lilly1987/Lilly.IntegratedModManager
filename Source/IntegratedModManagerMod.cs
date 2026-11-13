@@ -66,21 +66,22 @@ namespace Lilly.IntegratedModManager
                 Categories.Add(new ManagerCategoryData("after", "후순위 모드"));
             }
 
-            if (Tags.Count == 0 || Tags.All(tag => tag == null || !string.Equals(tag.Id, "untagged", StringComparison.OrdinalIgnoreCase)))
+            bool hasUntagged = false;
+            for (int i = 0; i < Tags.Count; i++)
             {
-                Tags.Insert(0, new ManagerTagData("untagged", "태그 없음"));
-            }
-            else
-            {
-                for (int i = 0; i < Tags.Count; i++)
+                ManagerTagData tag = Tags[i];
+                if (tag == null)
+                    continue;
+                if (string.Equals(tag.Id, "untagged", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (Tags[i] == null)
-                        continue;
-                    if (string.Equals(Tags[i].Id, "untagged", StringComparison.OrdinalIgnoreCase) &&
-                        Tags[i].Name.NullOrEmpty())
-                        Tags[i].Name = "태그 없음";
+                    hasUntagged = true;
+                    tag.IsSystem = true;
+                    if (tag.Name.NullOrEmpty())
+                        tag.Name = "태그 없음";
                 }
             }
+            if (!hasUntagged)
+                Tags.Insert(0, new ManagerTagData("untagged", "태그 없음"));
 
             ManagerCategoryData coreCategory = FindCategory("core") ?? Categories[0];
             ManagerCategoryData normalCategory = FindCategory("normal") ?? Categories[Categories.Count - 1];
@@ -387,6 +388,7 @@ namespace Lilly.IntegratedModManager
     {
         public string Id;
         public string Name;
+        public bool IsSystem;
         public List<ManagerFolderData> Folders = new List<ManagerFolderData>();
 
         public ManagerTagData()
@@ -397,6 +399,7 @@ namespace Lilly.IntegratedModManager
         {
             Id = id;
             Name = name;
+            IsSystem = string.Equals(id, "untagged", StringComparison.OrdinalIgnoreCase);
             Folders.Add(new ManagerFolderData("uncategorized", "미분류"));
         }
 
@@ -404,12 +407,14 @@ namespace Lilly.IntegratedModManager
         {
             Scribe_Values.Look(ref Id, "id");
             Scribe_Values.Look(ref Name, "name");
+            Scribe_Values.Look(ref IsSystem, "isSystem", false);
             Scribe_Collections.Look(ref Folders, "folders", LookMode.Deep);
         }
 
         internal ManagerTagData Copy()
         {
             ManagerTagData copy = new ManagerTagData(Id, Name);
+            copy.IsSystem = IsSystem;
             copy.Folders = Folders == null
                 ? new List<ManagerFolderData>()
                 : Folders.Select(folder => folder.Copy()).ToList();

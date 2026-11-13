@@ -210,7 +210,7 @@ namespace Lilly.IntegratedModManager
                     category.Enabled = enabled;
 
                 Rect labelRect = new Rect(enabledRect.xMax + 4f, tabRect.y,
-                    tabRect.width - enabledRect.width - 8f, tabRect.height);
+                    Mathf.Max(30f, tabRect.width - enabledRect.width - 90f), tabRect.height);
                 string label = category.Name + " (" + GetInstalledCount(category) + ")";
                 if (Widgets.ButtonText(labelRect, label))
                 {
@@ -223,7 +223,102 @@ namespace Lilly.IntegratedModManager
                     lastSelectedIndex = -1;
                     RefreshVisibleMods();
                 }
+
+                float actionX = tabRect.xMax - 84f;
+                if (Widgets.ButtonText(new Rect(actionX, tabRect.y + 7f, 26f, 22f), "+"))
+                    OpenCreateCategoryDialog(i + 1);
+                if (Widgets.ButtonText(new Rect(actionX + 28f, tabRect.y + 7f, 28f, 22f), "이름"))
+                    OpenRenameCategoryDialog(category);
+                if (Widgets.ButtonText(new Rect(actionX + 58f, tabRect.y + 7f, 24f, 22f), "×"))
+                    ConfirmDeleteCategory(category);
             }
+        }
+
+        private void OpenCreateCategoryDialog(int insertIndex)
+        {
+            Find.WindowStack.Add(new ManagerFolderNameDialog(
+                "새 카테고리",
+                "",
+                name =>
+                {
+                    string trimmed = name == null ? string.Empty : name.Trim();
+                    if (trimmed.NullOrEmpty())
+                        return false;
+
+                    if (categories.Any(category =>
+                        string.Equals(category.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Messages.Message("같은 이름의 카테고리가 이미 있습니다.",
+                            MessageTypeDefOf.RejectInput);
+                        return false;
+                    }
+
+                    ManagerCategoryData category = new ManagerCategoryData(
+                        Guid.NewGuid().ToString("N"), trimmed);
+                    category.Folders.Add(new ManagerFolderData("uncategorized", "미분류"));
+                    if (insertIndex >= 0 && insertIndex <= categories.Count)
+                        categories.Insert(insertIndex, category);
+                    else
+                        categories.Add(category);
+                    currentCategoryId = category.Id;
+                    currentFolderId = category.Folders.FirstOrDefault()?.Id;
+                    RefreshVisibleMods();
+                    return true;
+                }));
+        }
+
+        private void OpenRenameCategoryDialog(ManagerCategoryData category)
+        {
+            if (category == null)
+                return;
+
+            Find.WindowStack.Add(new ManagerFolderNameDialog(
+                "카테고리 이름 변경",
+                category.Name,
+                name =>
+                {
+                    string trimmed = name == null ? string.Empty : name.Trim();
+                    if (trimmed.NullOrEmpty())
+                        return false;
+
+                    if (categories.Any(existing => existing != category &&
+                        string.Equals(existing.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        Messages.Message("같은 이름의 카테고리가 이미 있습니다.",
+                            MessageTypeDefOf.RejectInput);
+                        return false;
+                    }
+
+                    category.Name = trimmed;
+                    return true;
+                }));
+        }
+
+        private void ConfirmDeleteCategory(ManagerCategoryData category)
+        {
+            if (category == null)
+                return;
+
+            if (category.ModIds != null && category.ModIds.Count > 0)
+            {
+                Messages.Message("모드가 들어 있는 카테고리는 삭제할 수 없습니다.",
+                    MessageTypeDefOf.RejectInput);
+                return;
+            }
+
+            Find.WindowStack.Add(Dialog_MessageBox.CreateConfirmation(
+                "카테고리 '" + category.Name + "'을(를) 삭제할까요?",
+                () =>
+                {
+                    categories.Remove(category);
+                    if (string.Equals(currentCategoryId, category.Id, StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentCategoryId = categories.FirstOrDefault()?.Id;
+                        currentFolderId = FindCurrentCategory()?.Folders.FirstOrDefault()?.Id;
+                    }
+                    RefreshVisibleMods();
+                },
+                destructive: true));
         }
 
         private void DrawTagTabs(Rect rect)
@@ -1696,20 +1791,47 @@ namespace Lilly.IntegratedModManager
                 return true;
 
             string query = searchText.Trim();
+            if (query.Length == 0)
+                return true;
+
             ManagerModData state = FindModState(mod.PackageId);
             string customName = state != null ? state.DisplayName : null;
-            return (GetDisplayName(mod) != null && GetDisplayName(mod).IndexOf(query,
-                    StringComparison.OrdinalIgnoreCase) >= 0) ||
-                (mod.Name != null && mod.Name.IndexOf(query,
-                    StringComparison.OrdinalIgnoreCase) >= 0) ||
-                (mod.PackageId != null && mod.PackageId.IndexOf(query,
-                    StringComparison.OrdinalIgnoreCase) >= 0) ||
-                (mod.AuthorsString != null && mod.AuthorsString.IndexOf(query,
-                    StringComparison.OrdinalIgnoreCase) >= 0) ||
-                (!customName.NullOrEmpty() && customName.IndexOf(query,
-                    StringComparison.OrdinalIgnoreCase) >= 0) ||
-                (!mod.Description.NullOrEmpty() && mod.Description.IndexOf(query,
-                    StringComparison.OrdinalIgnoreCase) >= 0);
+            string displayName = GetDisplayName(mod);
+
+            if (displayName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (mod.Name != null && mod.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (mod.PackageId != null && mod.PackageId.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (mod.AuthorsString != null && mod.AuthorsString.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (!customName.NullOrEmpty() && customName.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (!mod.Description.NullOrEmpty() && mod.Description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            if (state != null && state.TagIds != null)
+            {
+                for (int i = 0; i < state.TagIds.Count; i++)
+                {
+                    ManagerTagData tag = FindTag(state.TagIds[i]);
+                    if (tag != null && tag.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+
+            for (int i = 0; i < categories.Count; i++)
+            {
+                ManagerCategoryData category = categories[i];
+                if (category == null || category.ModIds == null)
+                    continue;
+                if (category.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    category.ModIds.Any(id => string.Equals(id, mod.PackageId, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+
+            return false;
         }
 
         private bool MatchesFilter(ModMetaData mod)

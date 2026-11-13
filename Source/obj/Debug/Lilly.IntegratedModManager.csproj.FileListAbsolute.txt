@@ -1,0 +1,9 @@
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\Lilly.IntegratedModManager.csproj.AssemblyReference.cache
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\Lilly.IntegratedModManager.GeneratedMSBuildEditorConfig.editorconfig
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\Lilly.IntegratedModManager.AssemblyInfoInputs.cache
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\Lilly.IntegratedModManager.AssemblyInfo.cs
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\Lilly.IntegratedModManager.csproj.CoreCompileInputs.cache
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Assemblies\Lilly.IntegratedModManager.dll
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\Lilly.IntegratedModManager.dll
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\refint\Lilly.IntegratedModManager.dll
+Y:\SteamLibrary\steamapps\common\RimWorld\Mods\Lilly.IntegratedModManager\Source\obj\Debug\ref\Lilly.IntegratedModManager.dll

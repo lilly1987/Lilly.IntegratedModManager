@@ -16,8 +16,8 @@
   <loadAfter>
     <li>brrainz.harmony</li>
   </loadAfter>
-  <description>Replaces the vanilla Mods entry screen with a category- and folder-based mod manager. Organize installed mods into four categories and category-specific folders, select multiple mods, toggle individual or category activation, and apply changes using RimWorld's mod configuration.
+  <description>Replaces the vanilla Mods entry screen with a category-, tag-, and folder-based mod manager. Organize installed mods into four categories and custom tags, place mods in category- or tag-specific folders, select multiple mods, toggle activation, and apply changes using RimWorld's mod configuration.
 
-바닐라 모드 화면을 카테고리 및 폴더 기반 모드 관리 화면으로 대체합니다. 설치된 모드를 네 카테고리와 카테고리별 폴더로 분류하고, 여러 모드를 선택해 이동하거나 개별·카테고리 활성화 상태를 변경할 수 있습니다. 적용 시 림월드의 기본 모드 설정에 반영하며, Core와 DLC는 필수 모드로 보호합니다.</description>
-  <modVersion>0.2.0</modVersion>
+바닐라 모드 화면을 카테고리·태그·폴더 기반 모드 관리 화면으로 대체합니다. 설치된 모드를 네 카테고리와 사용자 태그로 분류하고, 카테고리 또는 태그별 폴더로 정리할 수 있습니다. 여러 모드 선택, 태그 일괄 추가·제거, 개별·카테고리·태그별 활성화 관리와 적용을 지원합니다. 적용 시 림월드의 기본 모드 설정에 반영하며, Core와 DLC는 필수 모드로 보호합니다.</description>
+  <modVersion>0.3.0</modVersion>
 </ModMetaData>

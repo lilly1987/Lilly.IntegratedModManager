@@ -55,7 +55,7 @@ namespace Lilly.IntegratedModManager
                 string trimmedName = folderName.Trim();
                 if (trimmedName.NullOrEmpty())
                 {
-                    Messages.Message("폴더 이름을 입력하세요.", MessageTypeDefOf.RejectInput);
+                    Messages.Message("이름을 입력하세요.", MessageTypeDefOf.RejectInput);
                     return;
                 }
 

@@ -26,12 +26,14 @@ namespace Lilly.IntegratedModManager
     public sealed class IntegratedModManagerSettings : ModSettings
     {
         public List<ManagerCategoryData> Categories = new List<ManagerCategoryData>();
+        public List<ManagerTagData> Tags = new List<ManagerTagData>();
         public List<ManagerModData> Mods = new List<ManagerModData>();
 
         public override void ExposeData()
         {
             base.ExposeData();
             Scribe_Collections.Look(ref Categories, "categories", LookMode.Deep);
+            Scribe_Collections.Look(ref Tags, "tags", LookMode.Deep);
             Scribe_Collections.Look(ref Mods, "mods", LookMode.Deep);
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
                 EnsureInitialized();
@@ -43,6 +45,8 @@ namespace Lilly.IntegratedModManager
                 Categories = new List<ManagerCategoryData>();
             if (Mods == null)
                 Mods = new List<ManagerModData>();
+            if (Tags == null)
+                Tags = new List<ManagerTagData>();
 
             if (Categories.Count == 0)
             {
@@ -141,6 +145,59 @@ namespace Lilly.IntegratedModManager
                     uncategorized.ModIds.Add(packageId);
                 }
             }
+
+            for (int tagIndex = Tags.Count - 1; tagIndex >= 0; tagIndex--)
+            {
+                ManagerTagData tag = Tags[tagIndex];
+                if (tag == null || tag.Id.NullOrEmpty())
+                {
+                    Tags.RemoveAt(tagIndex);
+                    continue;
+                }
+
+                if (tag.Folders == null)
+                    tag.Folders = new List<ManagerFolderData>();
+                if (tag.Folders.Count == 0)
+                    tag.Folders.Add(new ManagerFolderData("uncategorized", "미분류"));
+
+                HashSet<string> linkedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int folderIndex = tag.Folders.Count - 1; folderIndex >= 0; folderIndex--)
+                {
+                    ManagerFolderData folder = tag.Folders[folderIndex];
+                    if (folder == null)
+                    {
+                        tag.Folders.RemoveAt(folderIndex);
+                        continue;
+                    }
+
+                    if (folder.ModIds == null)
+                        folder.ModIds = new List<string>();
+                    for (int modIndex = folder.ModIds.Count - 1; modIndex >= 0; modIndex--)
+                    {
+                        string packageId = folder.ModIds[modIndex];
+                        ManagerModData modData = FindModData(packageId);
+                        if (packageId.NullOrEmpty() || modData == null ||
+                            modData.TagIds == null || !modData.TagIds.Contains(tag.Id) ||
+                            !linkedIds.Add(packageId))
+                            folder.ModIds.RemoveAt(modIndex);
+                    }
+                }
+
+                ManagerFolderData unfiled = FindTagFolder(tag, "uncategorized");
+                if (unfiled == null)
+                {
+                    unfiled = new ManagerFolderData("uncategorized", "미분류");
+                    tag.Folders.Insert(0, unfiled);
+                }
+
+                for (int modIndex = 0; modIndex < Mods.Count; modIndex++)
+                {
+                    ManagerModData modData = Mods[modIndex];
+                    if (modData != null && modData.TagIds != null &&
+                        modData.TagIds.Contains(tag.Id) && linkedIds.Add(modData.PackageId))
+                        unfiled.ModIds.Add(modData.PackageId);
+                }
+            }
         }
 
         private static ManagerFolderData FindFolder(ManagerCategoryData category, string id)
@@ -153,6 +210,19 @@ namespace Lilly.IntegratedModManager
                     string.Equals(category.Folders[i].Id, id,
                         StringComparison.OrdinalIgnoreCase))
                     return category.Folders[i];
+            }
+            return null;
+        }
+
+        private static ManagerFolderData FindTagFolder(ManagerTagData tag, string id)
+        {
+            if (tag.Folders == null)
+                return null;
+            for (int i = 0; i < tag.Folders.Count; i++)
+            {
+                if (tag.Folders[i] != null &&
+                    string.Equals(tag.Folders[i].Id, id, StringComparison.OrdinalIgnoreCase))
+                    return tag.Folders[i];
             }
             return null;
         }
@@ -181,6 +251,19 @@ namespace Lilly.IntegratedModManager
                 if (Mods[i] != null &&
                     string.Equals(Mods[i].PackageId, packageId, StringComparison.OrdinalIgnoreCase))
                     return Mods[i];
+            }
+            return null;
+        }
+
+        internal ManagerTagData FindTag(string id)
+        {
+            if (Tags == null)
+                return null;
+            for (int i = 0; i < Tags.Count; i++)
+            {
+                if (Tags[i] != null &&
+                    string.Equals(Tags[i].Id, id, StringComparison.OrdinalIgnoreCase))
+                    return Tags[i];
             }
             return null;
         }
@@ -274,10 +357,45 @@ namespace Lilly.IntegratedModManager
         }
     }
 
+    public sealed class ManagerTagData : IExposable
+    {
+        public string Id;
+        public string Name;
+        public List<ManagerFolderData> Folders = new List<ManagerFolderData>();
+
+        public ManagerTagData()
+        {
+        }
+
+        public ManagerTagData(string id, string name)
+        {
+            Id = id;
+            Name = name;
+            Folders.Add(new ManagerFolderData("uncategorized", "미분류"));
+        }
+
+        public void ExposeData()
+        {
+            Scribe_Values.Look(ref Id, "id");
+            Scribe_Values.Look(ref Name, "name");
+            Scribe_Collections.Look(ref Folders, "folders", LookMode.Deep);
+        }
+
+        internal ManagerTagData Copy()
+        {
+            ManagerTagData copy = new ManagerTagData(Id, Name);
+            copy.Folders = Folders == null
+                ? new List<ManagerFolderData>()
+                : Folders.Select(folder => folder.Copy()).ToList();
+            return copy;
+        }
+    }
+
     public sealed class ManagerModData : IExposable
     {
         public string PackageId;
         public bool Enabled = true;
+        public List<string> TagIds = new List<string>();
 
         public ManagerModData()
         {
@@ -293,11 +411,16 @@ namespace Lilly.IntegratedModManager
         {
             Scribe_Values.Look(ref PackageId, "packageId");
             Scribe_Values.Look(ref Enabled, "enabled", true);
+            Scribe_Collections.Look(ref TagIds, "tags", LookMode.Value);
+            if (Scribe.mode == LoadSaveMode.PostLoadInit && TagIds == null)
+                TagIds = new List<string>();
         }
 
         internal ManagerModData Copy()
         {
-            return new ManagerModData(PackageId, Enabled);
+            ManagerModData copy = new ManagerModData(PackageId, Enabled);
+            copy.TagIds = TagIds == null ? new List<string>() : new List<string>(TagIds);
+            return copy;
         }
     }
 }

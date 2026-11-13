@@ -1351,17 +1351,37 @@ namespace Lilly.IntegratedModManager
             if (folder == null || folder.ModIds == null || folder.ModIds.Count <= 1)
                 return;
 
+            Dictionary<string, int> loadOrderIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int activeModIndex = 0;
+            foreach (ModMetaData activeMod in ModsConfig.ActiveModsInLoadOrder)
+            {
+                if (activeMod != null && !activeMod.PackageId.NullOrEmpty())
+                    loadOrderIndex[activeMod.PackageId] = activeModIndex;
+                activeModIndex++;
+            }
+
             folder.ModIds = folder.ModIds
                 .OrderBy(packageId =>
                 {
                     ModMetaData mod = FindMod(packageId);
-                    if (mod == null)
-                        return packageId ?? string.Empty;
-                    if (!mod.Name.NullOrEmpty())
+                    if (mod != null && loadOrderIndex.TryGetValue(mod.PackageId, out int orderIndex))
+                        return orderIndex;
+
+                    if (mod != null && !mod.Name.NullOrEmpty())
+                        return int.MaxValue - 1;
+
+                    return int.MaxValue;
+                })
+                .ThenBy(packageId =>
+                {
+                    ModMetaData mod = FindMod(packageId);
+                    if (mod != null && !mod.Name.NullOrEmpty())
                         return mod.Name;
-                    return mod.FolderName ?? packageId ?? string.Empty;
+                    return packageId ?? string.Empty;
                 }, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(packageId => packageId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
             RefreshVisibleMods();
         }
 

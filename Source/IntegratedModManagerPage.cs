@@ -476,8 +476,12 @@ namespace Lilly.IntegratedModManager
 
             if (Widgets.ButtonText(new Rect(x, rect.y, buttonWidth, rect.height), "선택 태그 편집"))
                 OpenSelectedTagMenu(selectedPackageIds.ToArray());
+            x += buttonWidth + 8f;
 
-            float rightX = rect.xMax - buttonWidth * 2f - 8f;
+            if (Widgets.ButtonText(new Rect(x, rect.y, buttonWidth, rect.height), "현재 목록 정렬"))
+                SortCurrentView();
+
+            float rightX = rect.xMax - buttonWidth * 3f - 8f;
             if (Widgets.ButtonText(new Rect(rightX, rect.y, buttonWidth, rect.height), "취소"))
                 Close();
             if (Widgets.ButtonText(new Rect(rightX + buttonWidth + 8f, rect.y,
@@ -1066,6 +1070,46 @@ namespace Lilly.IntegratedModManager
                     return true;
             }
             return false;
+        }
+
+        private void SortCurrentView()
+        {
+            if (tagMode)
+            {
+                ManagerTagData tag = FindCurrentTag();
+                if (tag == null)
+                    return;
+                ManagerFolderData folder = FindFolder(tag, currentFolderId);
+                if (folder != null)
+                    SortFolderModIds(folder);
+                return;
+            }
+
+            ManagerCategoryData category = FindCurrentCategory();
+            if (category == null)
+                return;
+            ManagerFolderData folderCurrent = FindFolder(category, currentFolderId);
+            if (folderCurrent != null)
+                SortFolderModIds(folderCurrent);
+        }
+
+        private void SortFolderModIds(ManagerFolderData folder)
+        {
+            if (folder == null || folder.ModIds == null || folder.ModIds.Count <= 1)
+                return;
+
+            folder.ModIds = folder.ModIds
+                .OrderBy(packageId =>
+                {
+                    ModMetaData mod = FindMod(packageId);
+                    if (mod == null)
+                        return packageId ?? string.Empty;
+                    if (!mod.Name.NullOrEmpty())
+                        return mod.Name;
+                    return mod.FolderName ?? packageId ?? string.Empty;
+                }, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            RefreshVisibleMods();
         }
 
         private void ApplyChanges()

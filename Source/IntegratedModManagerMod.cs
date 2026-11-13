@@ -66,6 +66,22 @@ namespace Lilly.IntegratedModManager
                 Categories.Add(new ManagerCategoryData("after", "후순위 모드"));
             }
 
+            if (Tags.Count == 0 || Tags.All(tag => tag == null || !string.Equals(tag.Id, "untagged", StringComparison.OrdinalIgnoreCase)))
+            {
+                Tags.Insert(0, new ManagerTagData("untagged", "태그 없음"));
+            }
+            else
+            {
+                for (int i = 0; i < Tags.Count; i++)
+                {
+                    if (Tags[i] == null)
+                        continue;
+                    if (string.Equals(Tags[i].Id, "untagged", StringComparison.OrdinalIgnoreCase) &&
+                        Tags[i].Name.NullOrEmpty())
+                        Tags[i].Name = "태그 없음";
+                }
+            }
+
             ManagerCategoryData coreCategory = FindCategory("core") ?? Categories[0];
             ManagerCategoryData normalCategory = FindCategory("normal") ?? Categories[Categories.Count - 1];
             HashSet<string> assignedPackageIds =

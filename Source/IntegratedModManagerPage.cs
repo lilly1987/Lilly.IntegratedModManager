@@ -663,6 +663,10 @@ namespace Lilly.IntegratedModManager
             }
             x += buttonWidth + 8f;
 
+            if (Widgets.ButtonText(new Rect(x, rect.y, buttonWidth, rect.height), "폴더 바로가기"))
+                OpenFastFolderMoveDialog();
+            x += buttonWidth + 8f;
+
             if (Widgets.ButtonText(new Rect(x, rect.y, buttonWidth, rect.height), "선택 태그 편집"))
                 OpenSelectedTagMenu(selectedPackageIds.ToArray());
             x += buttonWidth + 8f;
@@ -817,6 +821,9 @@ namespace Lilly.IntegratedModManager
             for (int i = 0; i < tags.Count; i++)
             {
                 ManagerTagData tag = tags[i];
+                if (tag == null)
+                    continue;
+
                 ManagerTagData target = tag;
                 bool allHaveTag = selectedIds.All(id => HasTag(id, target.Id));
                 string action = allHaveTag ? "태그 제거: " : "태그 추가: ";
@@ -826,6 +833,83 @@ namespace Lilly.IntegratedModManager
             options.Add(new FloatMenuOption("새 태그 만들기",
                 () => OpenCreateTagDialog(selectedIds)));
             Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void OpenFastFolderMoveDialog()
+        {
+            if (selectedPackageIds.Count == 0)
+                return;
+
+            List<List<FastFolderMoveDialog.FolderMoveTarget>> columns =
+                new List<List<FastFolderMoveDialog.FolderMoveTarget>>();
+
+            if (tagMode)
+            {
+                for (int i = 0; i < Math.Min(3, tags.Count); i++)
+                {
+                    ManagerTagData tag = tags[i];
+                    if (tag == null)
+                        continue;
+
+                    List<FastFolderMoveDialog.FolderMoveTarget> items =
+                        new List<FastFolderMoveDialog.FolderMoveTarget>();
+                    for (int folderIndex = 0; folderIndex < tag.Folders.Count; folderIndex++)
+                    {
+                        ManagerFolderData folder = tag.Folders[folderIndex];
+                        if (folder == null)
+                            continue;
+                        items.Add(new FastFolderMoveDialog.FolderMoveTarget(
+                            folder.Name + " (" + folder.ModIds.Count + ")",
+                            tag.Name,
+                            null,
+                            tag,
+                            folder));
+                    }
+                    columns.Add(items);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < Math.Min(3, categories.Count); i++)
+                {
+                    ManagerCategoryData category = categories[i];
+                    if (category == null)
+                        continue;
+
+                    List<FastFolderMoveDialog.FolderMoveTarget> items =
+                        new List<FastFolderMoveDialog.FolderMoveTarget>();
+                    for (int folderIndex = 0; folderIndex < category.Folders.Count; folderIndex++)
+                    {
+                        ManagerFolderData folder = category.Folders[folderIndex];
+                        if (folder == null)
+                            continue;
+                        items.Add(new FastFolderMoveDialog.FolderMoveTarget(
+                            folder.Name + " (" + folder.ModIds.Count + ")",
+                            category.Name,
+                            category,
+                            null,
+                            folder));
+                    }
+                    columns.Add(items);
+                }
+            }
+
+            if (columns.Count == 0)
+                return;
+
+            Find.WindowStack.Add(new FastFolderMoveDialog(columns,
+                target =>
+                {
+                    if (tagMode)
+                    {
+                        if (target != null && target.Tag != null && target.Folder != null)
+                            MoveSelectionToTagFolder(target.Tag, target.Folder);
+                        return;
+                    }
+
+                    if (target != null && target.Category != null && target.Folder != null)
+                        MoveSelectionToFolder(target.Category, target.Folder);
+                }));
         }
 
         private void SetTagForSelection(

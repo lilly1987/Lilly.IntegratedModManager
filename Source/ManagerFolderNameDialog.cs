@@ -32,6 +32,23 @@ namespace Lilly.IntegratedModManager
 
         public override void DoWindowContents(Rect rect)
         {
+            Event e = Event.current;
+            if (e.type == EventType.KeyDown)
+            {
+                if (e.keyCode == KeyCode.Return)
+                {
+                    TryAccept();
+                    e.Use();
+                    return;
+                }
+                if (e.keyCode == KeyCode.Escape)
+                {
+                    Close();
+                    e.Use();
+                    return;
+                }
+            }
+
             Text.Font = GameFont.Medium;
             Widgets.Label(new Rect(0f, 0f, rect.width, 32f), title);
             Text.Font = GameFont.Small;
@@ -52,16 +69,21 @@ namespace Lilly.IntegratedModManager
                 new Rect(rect.width / 2f + 5f, buttonY, buttonWidth, 32f),
                 "확인"))
             {
-                string trimmedName = inputName.Trim();
-                if (trimmedName.NullOrEmpty())
-                {
-                    Messages.Message("이름을 입력하세요.", MessageTypeDefOf.RejectInput);
-                    return;
-                }
-
-                if (acceptAction(trimmedName))
-                    Close();
+                TryAccept();
             }
+        }
+
+        private void TryAccept()
+        {
+            string trimmedName = inputName.Trim();
+            if (trimmedName.NullOrEmpty())
+            {
+                Messages.Message("이름을 입력하세요.", MessageTypeDefOf.RejectInput);
+                return;
+            }
+
+            if (acceptAction(trimmedName))
+                Close();
         }
     }
 }

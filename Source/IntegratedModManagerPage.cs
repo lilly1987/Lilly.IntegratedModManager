@@ -1,7 +1,9 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -617,6 +619,21 @@ namespace Lilly.IntegratedModManager
             Text.Font = GameFont.Small;
             y += 38f;
 
+            string versionText = GetModVersionText(mod);
+            if (!versionText.NullOrEmpty())
+            {
+                Widgets.Label(new Rect(inner.x, y, inner.width, 24f), "버전: " + versionText);
+                y += 26f;
+            }
+
+            string supportedVersions = GetSupportedGameVersionText(mod);
+            if (!supportedVersions.NullOrEmpty())
+            {
+                Widgets.Label(new Rect(inner.x, y, inner.width, 24f),
+                    "지원 게임 버전: " + supportedVersions);
+                y += 26f;
+            }
+
             Widgets.Label(new Rect(inner.x, y, inner.width, 24f),
                 "PackageId: " + mod.PackageIdPlayerFacing);
             y += 28f;
@@ -640,6 +657,21 @@ namespace Lilly.IntegratedModManager
             if (Widgets.ButtonText(new Rect(inner.xMax - 110f, y, 110f, 26f), "태그 편집"))
                 OpenSelectedTagMenu(new[] { mod.PackageId });
             y += 32f;
+
+            string dependencyText = GetDependencyText(mod);
+            if (!dependencyText.NullOrEmpty())
+            {
+                Widgets.Label(new Rect(inner.x, y, inner.width, 24f), "선행 모드: " + dependencyText);
+                y += 28f;
+            }
+
+            string workshopUrl = GetWorkshopUrl(mod);
+            if (!workshopUrl.NullOrEmpty())
+            {
+                if (Widgets.ButtonText(new Rect(inner.x, y, 150f, 26f), "Workshop 열기"))
+                    OpenUrl(workshopUrl);
+                y += 32f;
+            }
 
             Rect descriptionRect = new Rect(inner.x, y, inner.width,
                 Mathf.Max(80f, inner.height - (y - inner.y) - 4f));
@@ -1157,6 +1189,13 @@ namespace Lilly.IntegratedModManager
 
             options.Add(new FloatMenuOption("표시 이름 변경",
                 () => OpenRenameDisplayNameDialog(mod)));
+            options.Add(new FloatMenuOption("기본 이름으로 초기화",
+                () =>
+                {
+                    ManagerModData state = FindModState(mod.PackageId);
+                    if (state != null)
+                        state.DisplayName = null;
+                }));
             options.Add(new FloatMenuOption("PackageId 복사",
                 () =>
                 {
@@ -1164,6 +1203,10 @@ namespace Lilly.IntegratedModManager
                     Messages.Message("PackageId가 클립보드에 복사되었습니다: " + mod.PackageId,
                         MessageTypeDefOf.TaskCompletion);
                 }));
+            string workshopUrl = GetWorkshopUrl(mod);
+            if (!workshopUrl.NullOrEmpty())
+                options.Add(new FloatMenuOption("Workshop 페이지 열기",
+                    () => OpenUrl(workshopUrl)));
             if (mod.RootDir != null)
                 options.Add(new FloatMenuOption("모드 폴더 열기",
                     () =>
@@ -1180,6 +1223,8 @@ namespace Lilly.IntegratedModManager
                             Messages.Message("모드 폴더를 열 수 없습니다.", MessageTypeDefOf.RejectInput);
                         }
                     }));
+            options.Add(new FloatMenuOption("구독 취소(미지원)",
+                () => Messages.Message("현재 RimWorld API에서는 직접 Steam 구독 취소를 실행할 수 없습니다. Workshop 페이지에서 수동으로 취소하세요.", MessageTypeDefOf.RejectInput)));
             if (!string.IsNullOrEmpty(mod.Description))
                 options.Add(new FloatMenuOption("설명 보기",
                     () => Messages.Message(mod.Description, MessageTypeDefOf.NeutralEvent)));
@@ -2114,6 +2159,150 @@ namespace Lilly.IntegratedModManager
                 return state.DisplayName;
 
             return mod.Name.NullOrEmpty() ? mod.FolderName : mod.Name;
+        }
+
+        private static string GetModVersionText(ModMetaData mod)
+        {
+            if (mod == null)
+                return string.Empty;
+
+            string[] candidateNames = { "Version", "ModVersion", "CurrentVersion", "WorkshopVersion" };
+            foreach (string propertyName in candidateNames)
+            {
+                object value = ReadMetadataValue(mod, propertyName);
+                string text = value == null ? null : value.ToString();
+                if (!text.NullOrEmpty())
+                    return text;
+            }
+
+            return string.Empty;
+        }
+
+        private static string GetSupportedGameVersionText(ModMetaData mod)
+        {
+            if (mod == null)
+                return string.Empty;
+
+            string[] candidateNames = { "SupportedVersions", "GameVersion", "VersionString" };
+            foreach (string propertyName in candidateNames)
+            {
+                object value = ReadMetadataValue(mod, propertyName);
+                if (value == null)
+                    continue;
+
+                if (value is IEnumerable enumerable && !(value is string))
+                {
+                    List<string> values = new List<string>();
+                    foreach (object item in enumerable)
+                    {
+                        if (item != null)
+                            values.Add(item.ToString());
+                    }
+                    string joined = string.Join(", ", values);
+                    if (!joined.NullOrEmpty())
+                        return joined;
+                }
+
+                string text = value.ToString();
+                if (!text.NullOrEmpty())
+                    return text;
+            }
+
+            return string.Empty;
+        }
+
+        private static string GetDependencyText(ModMetaData mod)
+        {
+            if (mod == null)
+                return string.Empty;
+
+            List<string> dependencyNames = new List<string>();
+            foreach (string propertyName in new[] { "Dependencies", "LoadBefore", "LoadAfter", "RequiredMods" })
+            {
+                object value = ReadMetadataValue(mod, propertyName);
+                if (value == null)
+                    continue;
+
+                if (value is IEnumerable enumerable && !(value is string))
+                {
+                    foreach (object item in enumerable)
+                    {
+                        if (item != null && !item.ToString().NullOrEmpty())
+                            dependencyNames.Add(item.ToString());
+                    }
+                    continue;
+                }
+
+                string text = value.ToString();
+                if (!text.NullOrEmpty())
+                    dependencyNames.Add(text);
+            }
+
+            if (dependencyNames.Count == 0)
+                return string.Empty;
+
+            return string.Join(", ", dependencyNames.Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static string GetWorkshopUrl(ModMetaData mod)
+        {
+            if (mod == null)
+                return string.Empty;
+
+            string[] propertyNames =
+            {
+                "WorkshopUri",
+                "WorkshopUrl",
+                "WorkshopPage",
+                "SourceUrl",
+                "Url",
+                "SteamWorkshopUrl"
+            };
+
+            foreach (string propertyName in propertyNames)
+            {
+                object value = ReadMetadataValue(mod, propertyName);
+                if (value != null)
+                {
+                    string text = value.ToString();
+                    if (!text.NullOrEmpty())
+                        return text;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static object ReadMetadataValue(ModMetaData mod, string name)
+        {
+            if (mod == null || name.NullOrEmpty())
+                return null;
+
+            Type type = mod.GetType();
+            PropertyInfo property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (property != null)
+                return property.GetValue(mod, null);
+
+            FieldInfo field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            return field != null ? field.GetValue(mod) : null;
+        }
+
+        private static void OpenUrl(string url)
+        {
+            if (url.NullOrEmpty())
+                return;
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(url)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception)
+            {
+                Messages.Message("URL을 열 수 없습니다.", MessageTypeDefOf.RejectInput);
+            }
         }
     }
 }

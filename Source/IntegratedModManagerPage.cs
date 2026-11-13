@@ -65,9 +65,9 @@ namespace Lilly.IntegratedModManager
                     modsByPackageId[mod.PackageId] = mod;
             }
 
-            currentCategoryId = categories[0].Id;
+            currentCategoryId = categories.FirstOrDefault()?.Id;
             currentTagId = tags.FirstOrDefault()?.Id;
-            currentFolderId = categories[0].Folders[0].Id;
+            EnsureCurrentSelectionValid();
             RefreshVisibleMods();
         }
 
@@ -1216,9 +1216,7 @@ namespace Lilly.IntegratedModManager
 
             currentCategoryId = categories.FirstOrDefault()?.Id;
             currentTagId = tags.FirstOrDefault()?.Id;
-            currentFolderId = tagMode
-                ? FindCurrentTag()?.Folders.FirstOrDefault()?.Id
-                : FindCurrentCategory()?.Folders.FirstOrDefault()?.Id;
+            EnsureCurrentSelectionValid();
             selectedPackageIds.Clear();
             primarySelectedPackageId = null;
             lastSelectedIndex = -1;
@@ -1296,6 +1294,7 @@ namespace Lilly.IntegratedModManager
 
         private void RefreshVisibleMods()
         {
+            EnsureCurrentSelectionValid();
             visibleMods.Clear();
             if (tagMode)
             {
@@ -1333,6 +1332,45 @@ namespace Lilly.IntegratedModManager
                         visibleMods.Add(mod);
                 }
             }
+        }
+
+        private void EnsureCurrentSelectionValid()
+        {
+            if (tagMode)
+            {
+                ManagerTagData currentTag = FindCurrentTag();
+                if (currentTag == null)
+                {
+                    currentTagId = tags.FirstOrDefault()?.Id;
+                    currentTag = FindCurrentTag();
+                }
+
+                if (currentTag != null)
+                {
+                    if (currentFolderId.NullOrEmpty() || FindFolder(currentTag, currentFolderId) == null)
+                        currentFolderId = currentTag.Folders.FirstOrDefault()?.Id;
+                    return;
+                }
+
+                currentFolderId = null;
+                return;
+            }
+
+            ManagerCategoryData currentCategory = FindCurrentCategory();
+            if (currentCategory == null)
+            {
+                currentCategoryId = categories.FirstOrDefault()?.Id;
+                currentCategory = FindCurrentCategory();
+            }
+
+            if (currentCategory != null)
+            {
+                if (currentFolderId.NullOrEmpty() || FindFolder(currentCategory, currentFolderId) == null)
+                    currentFolderId = currentCategory.Folders.FirstOrDefault()?.Id;
+                return;
+            }
+
+            currentFolderId = null;
         }
 
         private int GetInstalledCount(ManagerCategoryData category)

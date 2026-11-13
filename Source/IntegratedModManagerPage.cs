@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using RimWorld;
 using UnityEngine;
@@ -9,6 +10,13 @@ namespace Lilly.IntegratedModManager
 {
     internal sealed class IntegratedModManagerPage : Page
     {
+        private enum ModFilter
+        {
+            All,
+            Active,
+            Inactive
+        }
+
         private const float RowHeight = 30f;
         private const float BottomHeight = 42f;
 
@@ -29,6 +37,7 @@ namespace Lilly.IntegratedModManager
         private int lastSelectedIndex = -1;
         private string currentFolderId;
         private string searchText = "";
+        private ModFilter currentModFilter = ModFilter.All;
         private bool tagMode;
         private Vector2 modListScroll;
         private Vector2 descriptionScroll;
@@ -120,7 +129,7 @@ namespace Lilly.IntegratedModManager
         {
             Widgets.Label(new Rect(rect.x, rect.y, 52f, rect.height), "검색");
             string newSearchText = Widgets.TextField(
-                new Rect(rect.x + 54f, rect.y, rect.width - 92f, rect.height),
+                new Rect(rect.x + 54f, rect.y, rect.width - 196f, rect.height),
                 searchText);
             if (!string.Equals(newSearchText, searchText, StringComparison.Ordinal))
             {
@@ -132,13 +141,46 @@ namespace Lilly.IntegratedModManager
             }
 
             if (!searchText.NullOrEmpty() &&
-                Widgets.ButtonText(new Rect(rect.xMax - 34f, rect.y, 34f, rect.height), "×"))
+                Widgets.ButtonText(new Rect(rect.xMax - 150f, rect.y, 34f, rect.height), "×"))
             {
                 searchText = "";
                 selectedPackageIds.Clear();
                 primarySelectedPackageId = null;
                 lastSelectedIndex = -1;
                 RefreshVisibleMods();
+            }
+
+            Rect filterRect = new Rect(rect.xMax - 112f, rect.y, 108f, rect.height);
+            if (Widgets.ButtonText(filterRect, GetFilterLabel()))
+            {
+                currentModFilter = NextFilter(currentModFilter);
+                RefreshVisibleMods();
+            }
+        }
+
+        private static ModFilter NextFilter(ModFilter filter)
+        {
+            switch (filter)
+            {
+                case ModFilter.All:
+                    return ModFilter.Active;
+                case ModFilter.Active:
+                    return ModFilter.Inactive;
+                default:
+                    return ModFilter.All;
+            }
+        }
+
+        private string GetFilterLabel()
+        {
+            switch (currentModFilter)
+            {
+                case ModFilter.Active:
+                    return "필터: 활성";
+                case ModFilter.Inactive:
+                    return "필터: 비활성";
+                default:
+                    return "필터: 전체";
             }
         }
 
@@ -383,6 +425,19 @@ namespace Lilly.IntegratedModManager
             else
                 Widgets.DrawHighlightIfMouseover(rowRect);
 
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 1 &&
+                rowRect.Contains(Event.current.mousePosition))
+            {
+                if (!selectedPackageIds.Contains(mod.PackageId))
+                {
+                    selectedPackageIds.Clear();
+                    selectedPackageIds.Add(mod.PackageId);
+                    primarySelectedPackageId = mod.PackageId;
+                }
+                OpenModContextMenu(mod);
+                Event.current.Use();
+            }
+
             Rect checkRect = new Rect(rowRect.x + 3f, rowRect.y + 3f, 24f, 24f);
             ManagerModData state = FindModState(mod.PackageId);
             bool checkedValue = state != null && state.Enabled;
@@ -396,7 +451,7 @@ namespace Lilly.IntegratedModManager
             if (Widgets.ButtonInvisible(nameRect))
                 SelectMod(visibleIndex, Event.current.control, Event.current.shift);
 
-            string name = mod.Name.NullOrEmpty() ? mod.FolderName : mod.Name;
+            string name = GetDisplayName(mod);
             Widgets.Label(nameRect, protectedMod ? name + " (필수)" : name);
         }
 
@@ -413,7 +468,7 @@ namespace Lilly.IntegratedModManager
 
             float y = inner.y;
             Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(inner.x, y, inner.width, 36f), mod.Name);
+            Widgets.Label(new Rect(inner.x, y, inner.width, 36f), GetDisplayName(mod));
             Text.Font = GameFont.Small;
             y += 38f;
 
@@ -796,6 +851,79 @@ namespace Lilly.IntegratedModManager
                     count++;
             }
             return count;
+        }
+
+        private void OpenModContextMenu(ModMetaData mod)
+        {
+            if (mod == null)
+                return;
+
+            List<FloatMenuOption> options = new List<FloatMenuOption>();
+            List<string> targets = selectedPackageIds.Count > 0
+                ? selectedPackageIds.ToList()
+                : new List<string> { mod.PackageId };
+
+            if (targets.Count > 0)
+            {
+                options.Add(new FloatMenuOption("선택 모드 활성화",
+                    () => SetSelectedEnabled(true)));
+                options.Add(new FloatMenuOption("선택 모드 비활성화",
+                    () => SetSelectedEnabled(false)));
+                options.Add(new FloatMenuOption("카테고리 이동...",
+                    () => OpenMoveMenu()));
+            }
+
+            options.Add(new FloatMenuOption("표시 이름 변경",
+                () => OpenRenameDisplayNameDialog(mod)));
+            options.Add(new FloatMenuOption("PackageId 복사",
+                () =>
+                {
+                    GUIUtility.systemCopyBuffer = mod.PackageId;
+                    Messages.Message("PackageId가 클립보드에 복사되었습니다: " + mod.PackageId,
+                        MessageTypeDefOf.TaskCompletion);
+                }));
+            if (mod.RootDir != null)
+                options.Add(new FloatMenuOption("모드 폴더 열기",
+                    () =>
+                    {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo(mod.RootDir.FullName)
+                            {
+                                UseShellExecute = true
+                            });
+                        }
+                        catch (Exception)
+                        {
+                            Messages.Message("모드 폴더를 열 수 없습니다.", MessageTypeDefOf.RejectInput);
+                        }
+                    }));
+            if (!string.IsNullOrEmpty(mod.Description))
+                options.Add(new FloatMenuOption("설명 보기",
+                    () => Messages.Message(mod.Description, MessageTypeDefOf.NeutralEvent)));
+
+            if (options.Count > 0)
+                Find.WindowStack.Add(new FloatMenu(options));
+        }
+
+        private void OpenRenameDisplayNameDialog(ModMetaData mod)
+        {
+            if (mod == null)
+                return;
+
+            ManagerModData state = FindModState(mod.PackageId);
+            if (state == null)
+                return;
+
+            Find.WindowStack.Add(new ManagerFolderNameDialog(
+                "표시 이름 변경",
+                state.DisplayName ?? GetDisplayName(mod),
+                name =>
+                {
+                    string trimmed = name == null ? string.Empty : name.Trim();
+                    state.DisplayName = trimmed.Length == 0 ? null : trimmed;
+                    return true;
+                }));
         }
 
         private void MoveSelectionTo(ManagerCategoryData target)
@@ -1531,16 +1659,55 @@ namespace Lilly.IntegratedModManager
 
         private bool MatchesSearch(ModMetaData mod)
         {
+            if (!MatchesFilter(mod))
+                return false;
+
             if (searchText.NullOrEmpty())
                 return true;
 
             string query = searchText.Trim();
-            return (mod.Name != null && mod.Name.IndexOf(query,
+            ManagerModData state = FindModState(mod.PackageId);
+            string customName = state != null ? state.DisplayName : null;
+            return (GetDisplayName(mod) != null && GetDisplayName(mod).IndexOf(query,
+                    StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (mod.Name != null && mod.Name.IndexOf(query,
                     StringComparison.OrdinalIgnoreCase) >= 0) ||
                 (mod.PackageId != null && mod.PackageId.IndexOf(query,
                     StringComparison.OrdinalIgnoreCase) >= 0) ||
                 (mod.AuthorsString != null && mod.AuthorsString.IndexOf(query,
+                    StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (!customName.NullOrEmpty() && customName.IndexOf(query,
+                    StringComparison.OrdinalIgnoreCase) >= 0) ||
+                (!mod.Description.NullOrEmpty() && mod.Description.IndexOf(query,
                     StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private bool MatchesFilter(ModMetaData mod)
+        {
+            ManagerModData state = FindModState(mod.PackageId);
+            bool active = state != null && state.Enabled;
+
+            switch (currentModFilter)
+            {
+                case ModFilter.Active:
+                    return active;
+                case ModFilter.Inactive:
+                    return !active;
+                default:
+                    return true;
+            }
+        }
+
+        private string GetDisplayName(ModMetaData mod)
+        {
+            if (mod == null)
+                return string.Empty;
+
+            ManagerModData state = FindModState(mod.PackageId);
+            if (state != null && !state.DisplayName.NullOrEmpty())
+                return state.DisplayName;
+
+            return mod.Name.NullOrEmpty() ? mod.FolderName : mod.Name;
         }
     }
 }
